@@ -71,7 +71,7 @@ def plot_shap(x, target,ignore=[],nbrmax=20):
     clf.fit(x[features], x[target])#,categorical_feature=categorical_features)
     
     shap_values = shap.TreeExplainer(clf.booster_).shap_values(x[features])
-    shap.summary_plot(shap_values, x[features], max_display=30, auto_size_plot=True)
+    shap.summary_plot(shap_values, x[features], max_display=nbrmax, auto_size_plot=True)
     
     if binary_target:
         vals= np.abs(shap_values).mean(0)
@@ -92,6 +92,8 @@ def plot_shap(x, target,ignore=[],nbrmax=20):
         shap.summary_plot(shap_values[1], x[features])        
         
         for name in sorted_features[:nbrmax]:
+            if name in categorical_features and x[name].astype(str).nunique()>100:
+                continue
             fig, ax = pls.subplots(1,1,figsize=(20,10))
             shap.dependence_plot(name, shap_values[1], X[features], display_features=x[features], interaction_index=None,ax=ax)
             pls.show()
@@ -102,6 +104,54 @@ def plot_shap(x, target,ignore=[],nbrmax=20):
         
     return sorted_features
 
+#=====================#=====================#=====================
+# time series plots
+#=====================#=====================#=====================
+
+def plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, method_name,sample=False):
+    
+    if sample:
+        values=df[feature].value_counts().sample(nbr_max).index.to_list()
+    else:
+        values=df[feature].value_counts()[:nbr_max].index.to_list()
+        
+    if  len(values)==0:
+        return
+    
+    resampler=df[df[feature]==values[0]][target].resample(period)
+    ax=getattr(resampler,method_name)().plot(x_compat=True,figsize=figsize, grid=True,linewidth=linewidth)
+    legend=[values[0]]
+    
+    for i in range(1,len(values)):
+        resampler=df[df[feature]==values[i]][target].resample(period)
+        getattr(resampler,method_name)().plot(x_compat=True, figsize=figsize,ax=ax, grid=True, linewidth=2.0,title='{} per day'.format(feature))
+        legend.append(values[i])
+
+    if len(values) > 1:
+        ax.lines[1].set_linestyle(":")
+    ax.lines[0].set_linestyle("--")
+    pls.legend(legend, bbox_to_anchor=(1.2, 0))
+    pls.show()
+    
+# plots n top feature values counts per day   
+def plot_ntop_categorical_values_counts(df,feature,target, nbr_max=4, figsize=(20,4), linewidth=2.0, period="1d",sample=False):
+
+    plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, 'count',sample)
+    return
+    
+    
+def plot_ntop_categorical_values_sums(df,feature,target,nbr_max=4,figsize=(20,4),linewidth=2.0,period="1d",sample=False):
+    
+    plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, 'sum',sample)
+    return
+
+    
+def plot_ntop_categorical_values_means(df,feature,target,nbr_max=4,figsize=(20,4),linewidth=2.0,period="1d",sample=False):
+    
+    plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, 'mean',sample)
+    return    
+
+    
 #=====================#=====================#=====================#=====================
 # cramers V
 #=====================#=====================#=====================#=====================
@@ -127,7 +177,7 @@ def cramers_corrected_stat(confusion_matrix):
     return np.sqrt(phi2corr / min( (kcorr-1), (rcorr-1)))
     
 def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
-
+    print(categoricals)
     fig=None
     if ax==None:
         fig, ax = pls.subplots(1,1,figsize=figsize)
@@ -139,6 +189,7 @@ def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
     )
 
     for col1, col2 in itertools.combinations(categoricals, 2):
+        print(col1, col2 )
         idx1, idx2 = categoricals.index(col1), categoricals.index(col2)
         correlation_matrix.iloc[idx1, idx2] = cramers_corrected_stat(pd.crosstab(df[col1], df[col2]))
         correlation_matrix.iloc[idx2, idx1] = correlation_matrix.iloc[idx1, idx2]
@@ -149,7 +200,7 @@ def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
     if fig!=None:#local figure
         pls.show()
 
-def get_categorical(df):
+def get_categorical(df,ignore=[]):
     
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64','datetime64','m8[ns]'] 
     
@@ -166,16 +217,17 @@ def get_categorical(df):
     categoricals=[col for col in categoricals if 
                df[col].dropna().nunique() >1 and df[col].nunique() < df.shape[0]/2]
     
-    return categoricals
+    
+    return list(set(categoricals)-set(ignore))
 
 
-def plot_cramer_v_corr(df,max_features=20,ax=None):
+def plot_cramer_v_corr(df,max_features=20,ax=None,ignore=[]):
     # plot features correlation (Theil’s U, conditional_entropy) heatmap
     #max_features max features to display
     #features are selected automaticly - categorical or binary  
     #features with too many different values are ignored
     
-    categorical=get_categorical(df)[:max_features]
+    categorical=get_categorical(df,ignore)[:max_features]
 
     if len(categorical)>1:
         cramer_v_corr(df,categorical,ax)

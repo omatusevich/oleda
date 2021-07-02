@@ -8,7 +8,22 @@ import seaborn as sns
 
 from .eda_core import *
 from .eda_core import plot_cramer_v_corr
+from .eda import plot_stats
+from .eda_core import plot_ntop_categorical_values_means
+from .eda_core import plot_ntop_categorical_values_counts,plot_ntop_categorical_values_sums
 
+#=====================#=====================#=====================
+# dataset comparison  pairwise report
+#=====================#=====================#=====================  
+
+#def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=20,full=True):
+    # Compare two datasets:
+    # df1      pandas dataframe     first dataset 
+    # df2      pandas dataframe     second dataset
+    # ignore  list                  features to ignore (optional)
+    # nbrmax  int                   max number of top features (with max shap values) to print
+
+#pairwise_report(df1,df2,target,ignore=[],nbrmax,full)
 
 #creates html report
 def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=20,full=True):
@@ -20,9 +35,9 @@ def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=20,full=True):
     #print shap values for each frame predicting targed
     header('Shap values' )
      
-    if target==None:
+    if target==None:#compare datasets
         sorted_features=plot_shap_pairwise(df1,df2,ignore,nbrmax)
-    else:
+    else:           #compare acconding to target
         sorted_features1=plot_shap(df1,target)
         sorted_features2=plot_shap(df2,target)
         sorted_features=sorted_features1 if len(sorted_features1)>len(sorted_features2) else sorted_features2
@@ -34,19 +49,14 @@ def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=20,full=True):
         #header again
         header('Time series') 
         #print frames records counts per day side by side
-        pairwise_feature_count_per_day(df1,df2,target)
+        pairwise_feature_stat_per_day(df1,df2,target,method_name='count')
         
-        #print sum of targed variable per day for both frames side by side
-        #pairwise_feature_sum_per_day(df1,df2,target)
-    #else:
-        #print('Index is not datetime - skip')
-
     #print each feature stat
     header('Features info' )
     print_features(df1,df2,target,sorted_features)
-     
-    header('Missed values')
+       
     if full:
+        header('Missed values')
         #plot missed vales
         plot_na_pairwise(df1,df2)
         print('\n \n ')
@@ -66,12 +76,12 @@ def print_features(df1,df2,target=None,sorted_features=[]):
         
     features = sorted_features if len(sorted_features)>0 else list(set(df1.columns.to_list()) & set(df2.columns.to_list()))
 
-
     for feature in features:
+        
         if feature==target:
             continue
+            
         print('\n ')
-        
         
         info1 = pd.DataFrame(
                 index=['Type :' ,'Distinct count :', 'Missed %:'],
@@ -80,9 +90,8 @@ def print_features(df1,df2,target=None,sorted_features=[]):
                 index=['Type :' ,'Distinct count :', 'Missed %:'],
                 columns=[' '])
     
-        display(HTML("<hr>"))
-        display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
-        print('\n ') 
+        header(feature,sz='h3')
+        
         info1[' '] = get_feature_info(df1,feature)
         
         if info1.iloc[0,0]=='Numeric':
@@ -95,6 +104,8 @@ def print_features(df1,df2,target=None,sorted_features=[]):
         display_side_by_side([info1.head(),info2.head()],['Frame 1','Frame 2'])
         print('\n ') 
 
+        noempty1=info1.loc['Distinct count :'][' ']>0
+        noempty2=info2.loc['Distinct count :'][' ']>0
         
         if info1.iloc[0,0]=='Categorical' or info1.iloc[0,0]=='Boolean':
             if info1.iloc[1,0]>df1.shape[0]/2.0 :
@@ -108,17 +119,17 @@ def print_features(df1,df2,target=None,sorted_features=[]):
                 #count of records with feature=value per day
                 if target != None and  df1.index.dtype==np.dtype('datetime64[ns]') and df2.index.dtype==np.dtype('datetime64[ns]'):
                     display(HTML("<h3 align=\"center\">Top {} count per day</h3>".format(feature)))
-                    plot_ntop_categorical_values_counts(df1,feature,target,4)
-                    plot_ntop_categorical_values_counts(df2,feature,target,4)
+                    if noempty1: plot_ntop_categorical_values_counts(df1,feature,target,4)
+                    if noempty2: plot_ntop_categorical_values_counts(df2,feature,target,4)
                 
                     #mean of target for records with feature=value per day
                     display(HTML("<h3 align=\"center\">{} mean per day </h3>".format(target)))
-                    plot_ntop_categorical_values_means(df1,feature,target,4)
-                    plot_ntop_categorical_values_means(df2,feature,target,4)
+                    if noempty1: plot_ntop_categorical_values_means(df1,feature,target,4)
+                    if noempty2: plot_ntop_categorical_values_means(df2,feature,target,4)
                 
         elif info1.iloc[0,0]=='Numeric':
-            #pairwise_feature_sum_per_day(df1,df2,feature)
-            #pairwise_feature_mean_per_day(df1,df2,feature)
+            #pairwise_feature_stat_per_day(df1,df2,feature,method_name='count')
+            #pairwise_feature_stat_per_day(df1,df2,feature,method_name='mean')
             if info1.iloc[1,0]<=25:
                 plot_pairwise_stats(df1,df2,feature,target,30)
             else:
@@ -126,15 +137,15 @@ def print_features(df1,df2,target=None,sorted_features=[]):
                 pairwise_density_plot_ex(df1,df2,feature)
                 
                 fig,ax = pls.subplots(1, 2,figsize=(16, 5))
-                sns.boxplot(df1[feature],color='blue',orient='h',ax=ax[0])                
-                sns.boxplot(df2[feature],color='blue',orient='h',ax=ax[1])
+                if noempty1: sns.boxplot(df1[feature],color='blue',orient='h',ax=ax[0])                
+                if noempty2: sns.boxplot(df2[feature],color='blue',orient='h',ax=ax[1])
                 pls.show()
                 
                 if  target !=None:
                     pairwise_scatter_plot(df1,df2,feature,target)
                     fig,ax = pls.subplots(1, 2,figsize=(12, 6))
-                    sns.violinplot(x=target, y=feature, data=df1, ax=ax[0], inner='quartile')
-                    sns.violinplot(x=target, y=feature, data=df2, ax=ax[1], inner='quartile')
+                    if noempty1: sns.violinplot(x=target, y=feature, data=df1, ax=ax[0], inner='quartile')
+                    if noempty2: sns.violinplot(x=target, y=feature, data=df2, ax=ax[1], inner='quartile')
                     pls.show()                        
                     
         else:
@@ -198,19 +209,21 @@ def plot_na_pairwise(df1,df2):
     
 def pairwise_density_plot(df1,df2,feature, figsize=(12,6)):
     fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
-    sns.distplot(df1[feature], hist = False,ax=ax1)
-    sns.distplot(df2[feature], hist = False,ax=ax2)
+    if  not df1[feature].isnull().values.all():sns.distplot(df1[feature], hist = False,ax=ax1)
+    if  not df2[feature].isnull().values.all():sns.distplot(df2[feature], hist = False,ax=ax2)
     pls.title('Density Plot and Histogram of {}'.format(feature))
     pls.show()
     
 def pairwise_density_plot_ex(df1,df2,feature, figsize=(12,6)):
     fig,(ax1, ax2)  = pls.subplots(1, 2,figsize=(12, 6))
-    sns.distplot(df1[feature],kde=True,ax=ax1) 
+    if  not df1[feature].isnull().values.all():
+        sns.distplot(df1[feature],kde=True,ax=ax1) 
     ax1.axvline(df1[feature].mean(),color = "k",linestyle="dashed",label="MEAN")
     ax1.legend(loc="upper right")
     ax1.set_title('{} Skewness = {:.4f}'.format('Frame 1',df1[feature].skew()))
 
-    sns.distplot(df2[feature],kde=True,ax=ax2) 
+    if  not df2[feature].isnull().values.all():
+        sns.distplot(df2[feature],kde=True,ax=ax2) 
     ax2.axvline(df2[feature].mean(),color = "k",linestyle="dashed",label="MEAN")
     ax2.legend(loc="upper right")
     ax2.set_title('{} Skewness = {:.4f}'.format('Frame 2',df2[feature].skew()))
@@ -218,8 +231,8 @@ def pairwise_density_plot_ex(df1,df2,feature, figsize=(12,6)):
     
 def pairwise_hist(df1,df2,feature,bins=30, figsize=(12,6)):
     fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
-    ax1.hist(df1[feature] , edgecolor = 'k', bins = bins)
-    ax2.hist(df2[feature] , edgecolor = 'k', bins = bins)
+    if  not df1[feature].isnull().values.all(): ax1.hist(df1[feature] , edgecolor = 'k', bins = bins)
+    if  not df2[feature].isnull().values.all(): ax2.hist(df2[feature] , edgecolor = 'k', bins = bins)
     ax1.set_title('Histogram of {}'.format(feature)); 
     ax1.set_xlabel(feature); 
     ax1.set_ylabel('Count');
@@ -234,37 +247,13 @@ def pairwise_scatter_plot(df1,df2,feature,target, figsize=(12,6)):
     ax1.set_ylabel(target);
     ax2.set_xlabel(feature); 
     ax2.set_ylabel(target);
-    ax1.scatter(df1[feature], df1[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
-    ax2.scatter(df2[feature], df2[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
+    if  not df1[feature].isnull().values.all():ax1.scatter(df1[feature], df1[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
+    if  not df2[feature].isnull().values.all():ax2.scatter(df2[feature], df2[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
     pls.show()     
 
 #=====================#=====================#=====================#=====================
 # categorical 
 #=====================#=====================#=====================#=====================
-    
-def __plot_stats(df,feature,target,ax1,ax2,end=30):
-
-    temp = df[feature].value_counts()
-    
-    df1 = pd.DataFrame({feature: temp.index,'Count ': temp.values})
-
-    cat_perc = df[[feature, target]].groupby([feature],as_index=False).mean()
-    #cat_perc.sort_values(by=target, ascending=False, inplace=True)
-    cat_perc=pd.merge(cat_perc,df1,on=feature)
-    cat_perc.sort_values(by='Count ', ascending=False, inplace=True)
-    del cat_perc['Count ']
-    cat_perc.columns=[feature,'Percent']
-    
-    sns.set_color_codes("pastel")
-    s = sns.barplot(ax=ax1, x = feature, y="Count ",order=df1[feature][:end],data=df1[:end])
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
-    
-    pls.ylabel('Percent ', fontsize=10)
-    
-    s = sns.barplot(ax=ax2, x = feature, y='Percent', order=cat_perc[feature][:end], data=cat_perc[:end])
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
-        
-    pls.tick_params(axis='both', which='major', labelsize=10)
 
 def __plot_pairwise_stats(df_1,df_2,feature,end=30):
 
@@ -274,21 +263,20 @@ def __plot_pairwise_stats(df_1,df_2,feature,end=30):
     temp = df_2[feature].value_counts()
     df2 = pd.DataFrame({feature: temp.index,'Count ': temp.values})
 
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=(12,6))
-    
+    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=(12,6))    
     sns.set_color_codes("pastel")
-    s = sns.barplot(ax=ax1, x = feature, y="Count ",order=df1[feature][:end],data=df1[:end])
-
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
     
-    s = sns.barplot(ax=ax2, x = feature, y="Count ",order=df2[feature][:end],data=df2[:end])
-    
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
+    if  not df_1[feature].isnull().values.all():
+        s = sns.barplot(ax=ax1, x = feature, y="Count ",order=df1[feature][:end],data=df1[:end])
+        s.set_xticklabels(s.get_xticklabels(),rotation=90)
+    if not df_2[feature].isnull().values.all():        
+        s = sns.barplot(ax=ax2, x = feature, y="Count ",order=df2[feature][:end],data=df2[:end])
+        s.set_xticklabels(s.get_xticklabels(),rotation=90)
         
     pls.tick_params(axis='both', which='major', labelsize=10)
     
     pls.show();
-    
+
 def plot_pairwise_stats(df1,df2,feature,target,end=30):
     
     if target != None:
@@ -296,10 +284,10 @@ def plot_pairwise_stats(df1,df2,feature,target,end=30):
         fig, axs = pls.subplots(2,2,figsize=(16,14))
 
         if feature in df1.columns and not df1[feature].isnull().values.all():
-            __plot_stats(df1,feature,target,axs[0,0],axs[1,0],end)
+            plot_stats(df1,feature,target,end,'Count ',ax1=axs[0,0],ax2=axs[1,0])
 
         if feature in df2.columns and not df2[feature].isnull().values.all():    
-            __plot_stats(df2,feature,target,axs[0,1],axs[1,1],end)
+            plot_stats(df2,feature,target,end,'Count ',ax1=axs[0,1],ax2=axs[1,1])
 
         pls.show();
     else:
@@ -309,52 +297,33 @@ def plot_pairwise_stats(df1,df2,feature,target,end=30):
 #=====================#=====================#=====================
 # time series plots
 #=====================#=====================#=====================
-
-
-def pairwise_feature_mean_per_day(df1,df2,target,figsize=(20,4),linewidth=2.0,period="1d"):
+def pairwise_feature_stat_per_day(df1,df2,target,figsize=(20,4),linewidth=2.0,method_name='mean',period="1d"):
     
     if df1.index.dtype==np.dtype('datetime64[ns]') and  df2.index.dtype==np.dtype('datetime64[ns]'):
-        ax=df1[target].resample(period).mean().plot( grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
-        df2[target].resample(period).mean().plot(ax=ax,grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
+        ax=getattr(df1[target].resample(period),method_name)().plot( grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
+        getattr(df2[target].resample(period),method_name)().plot(ax=ax, grid=True, x_compat=True, figsize=figsize, linewidth=linewidth)
         ax.lines[0].set_linestyle(":")
         ax.lines[1].set_linestyle("--")
-        pls.legend(['First frame {} mean'.format(target),'Second frame {} mean'.format(target)])
+        pls.legend(['First frame {} {}'.format(target,method_name),'Second frame {} mean'.format(target)])
         pls.show()
-
-def pairwise_feature_sum_per_day(df1,df2,target,figsize=(20,4),linewidth=2.0,period="1d"):
-    
-    if df1.index.dtype==np.dtype('datetime64[ns]') and  df2.index.dtype==np.dtype('datetime64[ns]'):
-        ax=df1[target].resample(period).sum().plot( grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
-        df2[target].resample(period).sum().plot(ax=ax,grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
-        ax.lines[0].set_linestyle(":")
-        ax.lines[1].set_linestyle("--")
-        pls.legend(['First frame {} sum'.format(target),'Second frame {} sum'.format(target)])
-        pls.show()    
-
-def pairwise_feature_count_per_day(df1,df2,target,figsize=(20,4),linewidth=2.0,period="1d"):
-    
-    if df1.index.dtype==np.dtype('datetime64[ns]') and  df2.index.dtype==np.dtype('datetime64[ns]'):
-        ax=df1[target].resample(period).count().plot( grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
-        df2[target].resample(period).count().plot(ax=ax,grid=True,x_compat=True,figsize=figsize,linewidth=linewidth)
-        ax.lines[0].set_linestyle(":")
-        ax.lines[1].set_linestyle("--")
-        pls.legend(['First frame {} count'.format(target),'Second frame {} count'.format(target)])
-        pls.show() 
+        
         
 def display_side_by_side(dfs:list, captions:list):
+    
     output = ""
+    attributes="style='display:inline'; font-size:110%'"
     combined = dict(zip(captions, dfs))
-    styles = [dict(selector="caption", 
-    props=[("text-align", "left"),
-    ("font-weight", "bold"),
-    ("font-size", "120%"),
-    ("color", 'black')])] 
+    styles   = [dict(selector="caption", props=[("text-align", "left"),
+        ("font-weight", "bold"),("font-size", "120%"),("color", 'black')])] 
+    
     for caption, df in combined.items():
-        output += df.style.set_table_attributes("style='display:inline'; font-size:110%'").set_caption(caption).set_table_styles(styles)._repr_html_()
+        output += df.style.set_table_attributes(attributes).set_caption(caption).set_table_styles(styles)._repr_html_()
         output += "\xa0\xa0\xa0"
+        
     display(HTML(output))
 
-
+#for compatibility
+print_report = pairwise_report  
 
 
        

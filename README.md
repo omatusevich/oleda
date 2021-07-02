@@ -55,7 +55,7 @@ then prints their statistics side by side to show the difference
 see  [Titanic dataset pairwise report example](README_files/Titanic_report_pairwise.md)
 
 
-All examples can be found in [jupiter notebook ](https://github.com/Banuba/oleda/blob/1ea82833d355a1cd45f52ea9376973600488629e/example/Titanic-oleda.ipynb)
+All examples can be found in [jupiter notebook ](https://nbviewer.jupyter.org/github/Banuba/oleda/blob/main/example/Titanic-oleda.ipynb)
 
 <hr>
 
