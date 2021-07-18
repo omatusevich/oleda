@@ -301,10 +301,10 @@ def print_features(df,target=None,sorted_features=[]):
                     print('Anova passed for ',depended)
                     fanova.append(feature)  
                     if len(depended)>1:
-                        tc=get_top_correlated(sub)
-                        depended=list(set(tc)&set(depended))
-                        sns.pairplot(sub,vars=depended,hue=feature,corner=True)
-                        pls.show()
+                        depended=get_top_correlated(sub[depended])
+                        if len(depended)>1:
+                            sns.pairplot(sub,vars=depended,hue=feature,corner=True)
+                            pls.show()
 
             if feature_type=='Categorical':
                     df[feature]=df[feature].replace('Missed value',np.nan)      
@@ -560,8 +560,8 @@ def interactions2x(ddf,feature=[],target=[],maxnbr=4,bins=True):
             if len(depended)>0:
                 print(f1, ' - ',depended,'\n\n\n') 
                 fanova[f1]= depended
-                tc=get_top_correlated(sub)
-                depended=list(set(tc)&set(depended))
+                depended=get_top_correlated(sub[depended])
+
                 if len(depended)>1:               
                     sns.pairplot(sub,vars=depended,hue=f1,corner=True)
                     pls.show()

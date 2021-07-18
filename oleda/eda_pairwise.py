@@ -26,8 +26,10 @@ from .eda_core import plot_ntop_categorical_values_counts,plot_ntop_categorical_
 #pairwise_report(df1,df2,target,ignore=[],nbrmax,full)
 
 #creates html report
-def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=20,full=True):
+def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
 
+    nbrmax=nbrmax if nbrmax!=None else max(df1.shape[1],df2.shape[2])
+    
     #detect time columns
     df1 = df1.apply(lambda col: safe_convert(col) if col.dtypes == object else col, axis=0)
     df2 = df2.apply(lambda col: safe_convert(col) if col.dtypes == object else col, axis=0)
@@ -149,7 +151,7 @@ def print_features(df1,df2,target=None,sorted_features=[]):
                     pls.show()                        
                     
         else:
-            print("Time column skip plotting ")
+            print("Time column - skip  ")
     
 
 #=====================#=====================#=====================#=====================
