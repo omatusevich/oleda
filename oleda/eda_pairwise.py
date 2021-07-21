@@ -1,16 +1,19 @@
-import numpy as np
 import math
-import matplotlib.pyplot as pls 
-import pandas as pd
 import datetime
-from IPython.display import display, HTML
-import seaborn as sns
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as pls 
 
-from .eda_core import *
-from .eda_core import plot_cramer_v_corr
+import seaborn as sns
+from IPython.display import display, HTML
+
 from .eda import plot_stats
+from .eda_core import plot_cramer_v_corr,safe_convert,header
 from .eda_core import plot_ntop_categorical_values_means
-from .eda_core import plot_ntop_categorical_values_counts,plot_ntop_categorical_values_sums
+from .eda_core import plot_ntop_categorical_values_counts
+from .eda_core import plot_ntop_categorical_values_sums
+from .eda_core import plot_shap,get_feature_info
+from .eda_core import missing_values_table
 
 #=====================#=====================#=====================
 # dataset comparison  pairwise report
@@ -28,7 +31,7 @@ from .eda_core import plot_ntop_categorical_values_counts,plot_ntop_categorical_
 #creates html report
 def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
 
-    nbrmax=nbrmax if nbrmax!=None else max(df1.shape[1],df2.shape[2])
+    nbrmax=nbrmax if nbrmax!=None else max(df1.shape[1],df2.shape[1])
     
     #detect time columns
     df1 = df1.apply(lambda col: safe_convert(col) if col.dtypes == object else col, axis=0)

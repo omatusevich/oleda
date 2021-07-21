@@ -1,23 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as pls 
 import pandas as pd
+import warnings
 
 from IPython.display import display, HTML
 import seaborn as sns
 
-
-from .eda_core import *
-from .eda_core import cramer_v_corr,plot_cramer_v_corr
-from .eda_core import plot_ntop_categorical_values_means
-from .eda_core import plot_ntop_categorical_values_counts
-from .eda_core import plot_ntop_categorical_values_sums
+from .eda_core  import *
 from .eda_anova import anova,two_way_anova,turkeyHSD
-
-import warnings
 
 warnings.filterwarnings("ignore")
     
-
 #=====================#=====================#=====================
 # single dataset  eda
 #=====================#=====================#=====================  

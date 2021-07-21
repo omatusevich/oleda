@@ -1,23 +1,17 @@
+import warnings
 import numpy as np
-import matplotlib.pyplot as pls 
 import pandas as pd
-
-from IPython.display import display, HTML
-import seaborn as sns
-
-from .eda_core import *
-
-import statsmodels.api as sm
-from statsmodels.formula.api import ols
-import seaborn as sns
-
-import statsmodels.stats.multicomp as mc
-
+import matplotlib.pyplot as pls 
 import scipy.stats as stats
 
-import warnings
+import seaborn as sns
+from IPython.display import display, HTML
 
-import gc
+import statsmodels.api as sm
+import statsmodels.stats.multicomp as mc
+from statsmodels.formula.api import ols
+
+from .eda_core import get_feature_info
 
 warnings.filterwarnings("ignore")
 

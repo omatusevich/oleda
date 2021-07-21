@@ -2,12 +2,12 @@ import numpy as np
 import matplotlib.pyplot as pls 
 import pandas as pd
 
-from IPython.display import display, HTML
-import seaborn as sns
-
-from lightgbm import LGBMClassifier,LGBMRegressor
-import lightgbm as lgb
 import shap
+import seaborn as sns
+import lightgbm as lgb
+from lightgbm import LGBMClassifier,LGBMRegressor
+
+from IPython.display import display, HTML
 
 #=====================#=====================#=====================#=====================
 # shap 
