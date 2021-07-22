@@ -30,7 +30,11 @@ from .eda_core import missing_values_table
 
 #creates html report
 def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
-
+    
+    if target!=None and target not in df.columns.to_list():
+        print("{} not in dataframe - Ignore".format(target))
+        target=None
+        
     nbrmax=nbrmax if nbrmax!=None else max(df1.shape[1],df2.shape[1])
     
     #detect time columns
@@ -58,7 +62,7 @@ def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
         
     #print each feature stat
     header('Features info' )
-    print_features(df1,df2,target,sorted_features)
+    print_features_pairwise(df1,df2,target,sorted_features)
        
     if full:
         header('Missed values')
@@ -77,7 +81,7 @@ def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
         #third parameter max features to display
         plot_cramer_v_corr_pairwise(df1,df2,nbrmax)    
 
-def print_features(df1,df2,target=None,sorted_features=[]):
+def print_features_pairwise(df1,df2,target=None,sorted_features=[]):
         
     features = sorted_features if len(sorted_features)>0 else list(set(df1.columns.to_list()) & set(df2.columns.to_list()))
 

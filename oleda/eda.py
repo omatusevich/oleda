@@ -382,6 +382,9 @@ def print_features(df,target=None,sorted_features=[]):
                                             
 def do_eda(df,target,ignore=[],nbrmax=20,figsize=(20,4),linewidth=2):
     
+    if target!=None and target not in df.columns.to_list():
+        print("{} not in dataframe - Ignore".format(target))
+        target=None
     #detect time columns
     df = df.apply(lambda col: safe_convert(col) if col.dtypes == object else col, axis=0)
     

@@ -19,9 +19,12 @@ warnings.filterwarnings("ignore")
 # explore datasets categorical variables
 #=====================#=====================#=====================#=====================
 
-def explore_dataset(df,target,max_card=200):
+def anova_explore_dataset(df,target,max_card=200):
     
     features = list(set(df.columns.to_list()))
+    if target not in features:
+        print("{} not in dataframe".format(target))
+        return
     
     df=df.dropna()
     
@@ -48,13 +51,13 @@ def explore_dataset(df,target,max_card=200):
 # compare datasets 
 #=====================#=====================#=====================#=====================
 
-def compare_datasets(df1,df2,target,max_card=200):
+def anova_compare_datasets(df1,df2,target,max_card=200):
     df1['flag176542']=0
     df2['flag176542']=2
     df=pd.concat([df1,df2])
-    compare_datasets_(df,'flag176542',target,max_card)
+    _compare_datasets(df,'flag176542',target,max_card)
     
-def compare_datasets_(df,flag,target,max_card=200):
+def _compare_datasets(df,flag,target,max_card=200):
     
     model = ols(target+' ~ C('+flag+')', data=df).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
@@ -92,12 +95,12 @@ def compare_datasets_(df,flag,target,max_card=200):
         
         if (feature_type=='Categorical' and cardinality<max_card) or feature_type=='Boolean':
             display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
-            res=compare_datasets_by_feature_anova(df,flag,feature,target,False)     
+            res=_compare_datasets_by_feature_anova(df,flag,feature,target,False)     
             if res.shape[0]>1:
                 print('Anova test:')
                 print(res,'\n\n')
 
-def compare_datasets_by_feature(df,flag,feature,target):
+def _compare_datasets_by_feature(df,flag,feature,target):
     
     resus=pd.DataFrame()
     for f in df[feature].unique():
@@ -112,7 +115,7 @@ def compare_datasets_by_feature(df,flag,feature,target):
                 resus=pd.concat([resus,res])
     return  resus[resus.reject].sort_values('meandiff',ascending=False) if resus.shape[0]>0 and resus[resus.reject].shape[0]>0 else resus
 
-def compare_datasets_by_feature_anova(df,flag,feature,target,verbose=True):
+def _compare_datasets_by_feature_anova(df,flag,feature,target,verbose=True):
     resus=pd.DataFrame()
     d=[]
     v1=[]
