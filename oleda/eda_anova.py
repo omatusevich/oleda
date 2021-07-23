@@ -35,10 +35,12 @@ def anova_explore_dataset(df,target,max_card=200):
                                                                    
         feature_type,cardinality,missed = get_feature_info(df,feature)
         
-        if (feature_type=='Categorical' and cardinality<max_card and cardinality>1) or feature_type=='Boolean':
-
+        if (feature_type=='Categorical' and cardinality<max_card and cardinality>1 and cardinality< df.shape[0]/2.0 ) or feature_type=='Boolean':
+            
+            display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
+            
             if(anova(df,feature,target)):
-                display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
+                
                 # Tukey HSD test
                 # target mean on feature values
                 comp = mc.MultiComparison(df[target],df[feature])
@@ -173,17 +175,21 @@ def turkeyHSD(df,feature,target):
 def anova(df,feature,target,verbose=True):
     
     model = ols(target+' ~ C('+feature+')', data=df).fit()
-    anova_table = sm.stats.anova_lm(model, typ=2)
-    if (verbose):
-        print(anova_table)
-        print('Anova ' ,anova_table['PR(>F)'].iloc[0], 'OK' if anova_table['PR(>F)'].iloc[0] <0.05 else 'KO')
     
     #Shapiro-Wilk test to check the normal distribution of residuals
     w, pvalue = stats.shapiro(model.resid)
     if (verbose):
         print('\nShapiro-Wilk test - normal distribution of residuals . ', 'OK' if (pvalue <0.05) else 'KO' )
         print(w, pvalue)
-    return ((pvalue<0.05)and(anova_table['PR(>F)'].iloc[0]<0.05))
+    if (pvalue>0.05):
+        return False
+    
+    anova_table = sm.stats.anova_lm(model, typ=2)
+    if (verbose):
+        print(anova_table)
+        print('Anova ' ,anova_table['PR(>F)'].iloc[0], 'OK' if anova_table['PR(>F)'].iloc[0] <0.05 else 'KO')
+        
+    return (anova_table['PR(>F)'].iloc[0]<0.05)
 
 #=====================#=====================#=====================#=====================
 # two way anova
