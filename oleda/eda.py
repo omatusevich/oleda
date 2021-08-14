@@ -486,11 +486,11 @@ def interactions2x(ddf,feature=[],target=[],maxnbr=4,bins=True):
             if cardinality < df.shape[0]/2.0 and cardinality>=2 and cardinality < 40:
                 candidates.append(f)
             elif bins:
-                #q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-                #df['cuts__'+f]=pd.qcut(df[f], q=q,duplicates='drop')
+                q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+                df['cuts__'+f]=pd.qcut(df[f], q=q,duplicates='drop')
                
-                df['cuts__'+f]=pd.cut(df[f], bins=[0,1,2,3,5,10,15,20,60,100,1000])
-                df['cuts__'+f]=df['cuts__'+f].astype(str)
+                #df['cuts__'+f]=pd.cut(df[f], bins=[0,1,2,3,5,10,15,20,60,100,1000])
+                #df['cuts__'+f]=df['cuts__'+f].astype(str)
                 
                 candidates.append('cuts__'+f)
     fanova={}
