@@ -92,6 +92,7 @@ def plot_shap(x, target,ignore=[],nbrmax=20):
         shap.summary_plot(shap_values[1], x[features])        
         
         for name in sorted_features[:nbrmax]:
+            #continue
             if name in categorical_features and x[name].astype(str).nunique()>100:
                 continue
             fig, ax = pls.subplots(1,1,figsize=(20,10))
@@ -177,7 +178,7 @@ def cramers_corrected_stat(confusion_matrix):
     return np.sqrt(phi2corr / min( (kcorr-1), (rcorr-1)))
     
 def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
-    print(categoricals)
+
     fig=None
     if ax==None:
         fig, ax = pls.subplots(1,1,figsize=figsize)
@@ -189,7 +190,7 @@ def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
     )
 
     for col1, col2 in itertools.combinations(categoricals, 2):
-        print(col1, col2 )
+
         idx1, idx2 = categoricals.index(col1), categoricals.index(col2)
         correlation_matrix.iloc[idx1, idx2] = cramers_corrected_stat(pd.crosstab(df[col1], df[col2]))
         correlation_matrix.iloc[idx2, idx1] = correlation_matrix.iloc[idx1, idx2]
