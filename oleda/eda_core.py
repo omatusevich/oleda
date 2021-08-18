@@ -27,7 +27,9 @@ def plot_shap(x, target,ignore=[],nbrmax=20):
             features.remove(f)
             
     features=list(set(features)-set(ignore))
-
+    [print('Feature name {} cantains special JSON characters - Skip'.format(x))  for x in features  if ':' in x  ]
+    features=[ x for x in features  if not ':' in x  ]
+    
     #list of categorical features
     categorical_features=x[features].select_dtypes(exclude=numerics).columns.to_list()
 
