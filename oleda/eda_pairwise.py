@@ -8,12 +8,12 @@ import seaborn as sns
 from IPython.display import display, HTML
 
 from .eda import plot_stats
-from .eda_core import plot_cramer_v_corr,safe_convert,header
-from .eda_core import plot_ntop_categorical_values_means
-from .eda_core import plot_ntop_categorical_values_counts
-from .eda_core import plot_ntop_categorical_values_sums
-from .eda_core import plot_shap,get_feature_info
-from .eda_core import missing_values_table
+from .eda import plot_cramer_v_corr,safe_convert,header
+from .eda import plot_ntop_categorical_values_means
+from .eda import plot_ntop_categorical_values_counts
+from .eda import plot_ntop_categorical_values_sums
+from .eda import plot_shaps,get_feature_info
+from .eda import missing_values_table
 
 #=====================#=====================#=====================
 # dataset comparison  pairwise report
@@ -29,7 +29,7 @@ from .eda_core import missing_values_table
 #pairwise_report(df1,df2,target,ignore=[],nbrmax,full)
 
 #creates html report
-def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
+def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True,nbrmax20=20):
     
     if target!=None and target not in df.columns.to_list():
         print("{} not in dataframe - Ignore".format(target))
@@ -74,12 +74,12 @@ def pairwise_report(df1,df2,target=None,ignore=[],nbrmax=None,full=True):
 
         #for numeric variables only
         header('Pearson correlations' )     
-        plot_correlations_pairwise(df1,df2,nbrmax) 
+        plot_correlations_pairwise(df1,df2,nbrmax20) 
 
         #correlations of categorical variables
         header('Cramers V staticstics' )    
         #third parameter max features to display
-        plot_cramer_v_corr_pairwise(df1,df2,nbrmax)    
+        plot_cramer_v_corr_pairwise(df1,df2,nbrmax20)    
 
 def print_features_pairwise(df1,df2,target=None,sorted_features=[]):
         
@@ -174,7 +174,7 @@ def plot_shap_pairwise(df1, df2,ignore=[],nbrmax=20):
     xx[target]=1
     x=pd.concat([x,xx],axis=0)
 
-    return plot_shap(x,target,ignore,nbrmax)
+    return plot_shaps(x,target,ignore,nbrmax)
 
 def plot_cramer_v_corr_pairwise(df1,df2,max_features=20):
     fig, ax = pls.subplots(1,2,figsize=(40,20))

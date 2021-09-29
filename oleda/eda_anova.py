@@ -11,7 +11,6 @@ import statsmodels.api as sm
 import statsmodels.stats.multicomp as mc
 from statsmodels.formula.api import ols
 
-from .eda_core import get_feature_info
 
 warnings.filterwarnings("ignore")
 
@@ -26,7 +25,6 @@ def anova_explore_dataset(df,target,max_card=200):
         print("{} not in dataframe".format(target))
         return
     
-    df=df.dropna()
     
     for feature in features:
                                                                    
@@ -39,11 +37,11 @@ def anova_explore_dataset(df,target,max_card=200):
             
             display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
             
-            if(anova(df,feature,target)):
+            if(anova(df[[feature,target]].dropna(),feature,target)):
                 
                 # Tukey HSD test
                 # target mean on feature values
-                comp = mc.MultiComparison(df[target],df[feature])
+                comp = mc.MultiComparison(df[target],df[feature].fillna('MISSED'))
                 post_hoc_res = comp.tukeyhsd()
                 results_as_html =post_hoc_res.summary().as_html()
                 results_as_pandas = pd.read_html(results_as_html, header=0, index_col=0)[0]
@@ -201,6 +199,24 @@ def two_way_anova(df,feature1,feature2,target):
     anova_table = sm.stats.anova_lm(model, typ=2)
     return anova_table
 
-            
+
+def get_feature_type(s):
+    if s.dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]:
+        return 'Numeric'
+    elif '[ns]' in str(s.dtype) or 'datetime' in str(s.dtype):
+        return 'Time'
+    elif s.dtype in [np.bool] or len(set(s.dropna().unique()) - set([False,True]))==0:
+        return 'Boolean'
+    else:
+        return 'Categorical' 
+    
+def get_feature_info(df,feature):
+    if feature in df.columns:
+        cardinality = df[feature].nunique()
+        missed= 100 * df[feature].isnull().sum() / df.shape[0]
+        feature_type = get_feature_type(df[feature])
+        return [feature_type,cardinality,missed]
+    else:
+        return "","",""            
 
     
