@@ -1,13 +1,23 @@
-import numpy as np
-import matplotlib.pyplot as pls 
-import pandas as pd
-import warnings
+"""Exploratory Data Analysis with python.
 
-from IPython.display import display, HTML
-import seaborn as sns
-import lightgbm as lgb
-from lightgbm import LGBMClassifier,LGBMRegressor
+   Automatic report generation from a pandas DataFrame.
+   Insights from data.
+   
+   Typical usage example:
+         import oleda
+         oleda.report(df)
+"""
+import warnings
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as pls
+
 import shap
+import seaborn as sns
+from scipy import stats
+import lightgbm as lgb
+from IPython.display import display, HTML
+from lightgbm import LGBMClassifier,LGBMRegressor
 
 from .eda_anova import anova,two_way_anova,turkeyHSD
 
@@ -17,115 +27,184 @@ warnings.filterwarnings("ignore")
 # single dataset  eda
 #=====================#=====================#=====================  
 
-#single dataset report
-def report(df,target=None,ignore=[],nbrmax=20):
-    do_eda(df,target,ignore,nbrmax)  
+def report(df,target,**kwarg):  
+    """Explore single dataset and create report .
+
+       Report contains:
+            missing values statistics
+            information on each feature relevant for the feature type
+            pearson correlation heatmap
+            Cramers V staticstics
+            pair plot for most correlated features
+            if dataframe index is valid datetime index, time series plots are added to the report
+       Dataset can be tested against an target variable (binary (0,1) or continues):
+                oleda.report(df,target,ignore=[],nbrmax=20)
+            in this case plots that show correlation with targed are added for each feature features 
+            are sorterted according to their impotantce by shap nbrmax number of most important features 
+            selected by shap to be explored features need to be ignored can be added in ignore list         
+    Args:
+        df       (object): Pandas dataframe        
+    Keyword Args:
+        dependency (bool): set to True to plot dependency plots 
+        maxcount   (int) : maximum number of features to display
+        ignore     (list): list of features to ignore         
+    """
+
+    ignore=kwarg.get('ignore',[])
+    
+    if target!=None and target not in df.columns.to_list():
+        print("{} is not in dataframe - Ignore".format(target))
+        target=None      
+        
+    #detect time columns
+    df = df.apply(lambda col: safe_convert(col) if col.dtypes == object else col, axis=0)
+    
+    #print nans statistics
+    header('Missed values' )
+    print_na(df,**kwarg)
+                      
+    if (target is not None) and isNumeric(df[target].dtype) :
+        header('Shap values')
+        sorted_features=plot_shaps(df,target,**kwarg)
+    else:
+        sorted_features=[f for f in df.columns.tolist() if f not in ignore]
+        #list(set(df.columns.tolist())-set(ignore))
+
+    # if dataframe has timedate index - plot time series
+    if target !=None and  isTime(df.index.dtype) and df.index.nunique()> 2:
+        header('Time series' )
+        ax=df[target].resample('1d').mean().plot( grid=True,x_compat=True,figsize=(20,4),linewidth=2.0,label=target)
+        pls.title(' {} mean per day '.format(target))
+        pls.legend()
+        pls.show() 
+ 
+    header('Features' )
+    print_features(df,target,sorted_features)
+     
+    #for numeric variables only
+    header('Pearson correlations' ) 
+    plot_corr(df,**kwarg) 
+
+    #correlations of categorical variables
+    header('Cramers V staticstics' )    
+    plot_cramer_v_corr(df,**kwarg) 
+
+    #plot 10 most correlated features
+    header('Top correlated features' )  
+    f=get_top_correlated(df,th=0.099,maxcount=7)
+    g=sns.pairplot(df[f])  
+    
+    for ax in g.axes.flatten():
+        ax.set_xlabel(ax.get_xlabel(), rotation = 90)
+        ax.set_ylabel(ax.get_ylabel(), rotation = 0)
+        ax.yaxis.get_label().set_horizontalalignment('right')
+  
     
 #=====================#=====================#=====================#
 # shap 
 #=====================#=====================#=====================#
 
-#shap values
-def plot_shaps(x, target,ignore=[],nbrmax=None,dependency=True):
-    
-    features=x.columns.to_list()
-    features.remove(target)
-    
-    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
-    
-    #doesn't work on time columns, remove id columns (all values are different), columns with all nulls 
-    for f in x.columns.to_list():
+def plot_shaps(df, target, **kwarg):
+    """Calculates shapley values.
+
+    Builds lightgbm model to predict target variable and calculates and plots 
+    its shapley values.
+
+    Args:
+        df   (DataFrame): pandas DataFrame.
+        target     (str): Dependend feature name
         
-        if (isTime(x[f].dtype) or x[f].isnull().values.all() or (len(x[f].unique())>x.shape[0]/2.0 and str(x[f].dtype) not in numerics))  and f in features:
-            features.remove(f)
+    Keyword Args:
+        dependency (bool): set to True to plot dependency plots 
+        maxcount   (int) : maximum number of features to display
+        ignore     (list): list of features to ignore 
+        
+    Returns:
+        Feature names sorted by importance 
+    """    
+
+    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+
+    maxcount  = kwarg.get('maxcount',df.shape[1])
+    ignore    = kwarg.get('ignore',[])
+    
+    #doesn't work on time columns, remove id columns (all values are different), columns with all nulls     
+    filterout=lambda f: (isTime(df[f].dtype) or df[f].isnull().values.all()\
+                      or  (len(df[f].unique())>df.shape[0]/2.0 and str(df[f].dtype) not in numerics))
+
+    features = [ f for f in df.columns if ~filterout(f) ]
+    features.remove(target)
             
     features=list(set(features)-set(ignore))
     [print('Feature name {} cantains special JSON characters - Skip'.format(x))  for x in features  if ':' in x  ]
     features=[ x for x in features  if not ':' in x  ]
     
     #list of categorical features
-    categorical_features=x[features].select_dtypes(exclude=numerics).columns.to_list()
+    categorical_features=df[features].select_dtypes(exclude=numerics).columns.to_list()
 
     #change type to categorical for lightgbm
     backup={}
     for c in categorical_features:
-        backup[c]=x[c].dtype
-        x[c] = x[c].astype('category')
+        backup[c]=df[c].dtype
+        df[c] = df[c].astype('category')
 
-    target_type,target_cardinality,_=get_feature_info(x,target)
-    binary_target=(target_type=='Numeric' and target_cardinality==2)
-    
-    if nbrmax==None:
-        if len(features)>20:
-            print('Shap values for 20 most important features will be plotted. If you need more please set nbrmax parameter')
-        nbrmax=20
+    binary_target=((str(df[target].dtype) in numerics) and (df[target].nunique()==2))
+            
+    parameters={              'n_estimators':100
+                            , 'min_data_in_leaf' : 10
+                            , 'min_sum_hessian_in_leaf' : 10
+                            , 'feature_fraction' : 0.9
+                            , 'bagging_fraction' : 1
+                            , 'bagging_freq' : 1                     
+                            , 'learning_rate' : 0.03
+                            , 'num_leaves' : 19
+                            , 'num_threads' : 2
+                            , 'nrounds' : 500 }
         
     if binary_target:
-        clf = LGBMClassifier(
-                             objective='binary'
-                             ,n_estimators=100
-                            , min_data_in_leaf = 10
-                            , min_sum_hessian_in_leaf = 10
-                            , feature_fraction = 0.9
-                            , bagging_fraction = 1
-                            , bagging_freq = 1                     
-                            , metric='auc'
-                            , learning_rate = 0.03
-                            , num_leaves = 19
-                            , num_threads = 2
-                            , nrounds = 500 
-                            )
+        parameters['objective']='binary'
+        parameters['metric']='auc'
+        clf = LGBMClassifier(**parameters)
     else:
-        clf = LGBMRegressor(                           
-                             n_estimators=100
-                            , min_data_in_leaf = 10
-                            , min_sum_hessian_in_leaf = 10
-                            , feature_fraction = 0.9
-                            , bagging_fraction = 1
-                            , bagging_freq = 1                     
-                            , learning_rate = 0.03
-                            , num_leaves = 19
-                            , num_threads = 2
-                            , nrounds = 500 
-                            )
-    clf.fit(x[features], x[target])#,categorical_feature=categorical_features)
+        clf = LGBMRegressor( **parameters )
+    clf.fit(df[features], df[target])#,categorical_feature=categorical_features)
     
-    shap_values = shap.TreeExplainer(clf.booster_).shap_values(x[features])
-    shap.summary_plot(shap_values, x[features], max_display=nbrmax, auto_size_plot=True)
+    shap_values = shap.TreeExplainer(clf.booster_).shap_values(df[features])
+    shap.summary_plot(shap_values, df[features], max_display=maxcount, auto_size_plot=True)
     
     if binary_target:
         vals= np.abs(shap_values).mean(0)
     else:
         vals= shap_values
         
-    feature_importance = pd.DataFrame(list(zip(x[features].columns, sum(vals))), columns=['col_name','feature_importance_vals'])
+    feature_importance = pd.DataFrame(list(zip(df[features].columns, sum(vals))), 
+                                      columns=['col_name','feature_importance_vals'])
     feature_importance.sort_values(by=['feature_importance_vals'], ascending=False,inplace=True)
     sorted_features=feature_importance['col_name'].to_list()
 
-    X=x.copy()
+    X=df.copy()
 
-     
-       
     if binary_target:
-        shap.summary_plot(shap_values[1], x[features])    
+        shap.summary_plot(shap_values[1][:,:maxcount], df[features[:maxcount]])    
         
-        if dependency:
+        if kwarg.get('dependency',True):
             
             for f in categorical_features:
                 X[f]=  X[f].astype(object)
                 X[f]=pd.factorize(X[f])[0]  
 
-            for name in sorted_features[:nbrmax]:
+            for name in sorted_features[:maxcount]:
                 #continue
-                if name in categorical_features and x[name].astype(str).nunique()>100:
+                if name in categorical_features and df[name].astype(str).nunique()>100:
                     continue
                 fig, ax = pls.subplots(1,1,figsize=(20,10))
-                shap.dependence_plot(name, shap_values[1], X[features], display_features=x[features], interaction_index=None,ax=ax)
+                shap.dependence_plot(name, shap_values[1], X[features], 
+                                     display_features=df[features], interaction_index=None,ax=ax)
                 pls.show()
 
     #restore type
     for c in categorical_features:
-        x[c] = x[c].astype(backup[c])
+        df[c] = df[c].astype(backup[c])
         
     return sorted_features
 
@@ -133,10 +212,26 @@ def plot_shaps(x, target,ignore=[],nbrmax=None,dependency=True):
 # numerical continues
 #=====================#=====================#=====================#=====================
 
-def plot_cuts(df,feature,target,bins=None, figsize=(12,6)):
-    
+def plot_cuts(df,feature,target,**kwarg):
+    """Split continues variable on bins and plot per bins statistics.
+
+    Split continues variable on bins and plot per bins target mean and count.
+    If bins argument is absent , variable is splited on nbins 
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        feature   (str): feature to split
+        target    (str):  feature to calculate statiscs 
+
+    Keyword Args:
+        figsize (tuple): plot size 
+        nbins     (int): number of bins 
+        bins     (list): bins     
+    """    
+    figsize=kwarg.get('figsize',(8,4))
+    bins=kwarg.get('bins',None)
     if bins==None:
-        bins=np.arange(df[feature].min(),df[feature].max(),(df[feature].max()-df[feature].min())/10.)
+        bins=np.arange(df[feature].min(),df[feature].max(),(df[feature].max()-df[feature].min())/(1+kwarg.get('nbins',10)))
     
     fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
     pls.title('Histogram of {}'.format(feature)); 
@@ -148,10 +243,26 @@ def plot_cuts(df,feature,target,bins=None, figsize=(12,6)):
     df.groupby(pd.cut(df[feature], bins=bins))[target].mean().plot(kind='bar',ax=ax2,grid=True)  
     pls.show()  
     
-def plot_qcuts(df,feature,target,q=None, figsize=(8,4)):
+def plot_qcuts(df,feature,target,**kwarg):
+    """Split continues variable on quantiles and plot per quantiles statistics.
+
+    Split continues variable on quantiles and plot per quantiles target mean and count.
+    If quantiles argument is absent , variable split on 10 quantiles 
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        feature   (str): feature to split
+        target    (str):  feature to calculate statiscs 
+
+    Keyword Args:
+        figsize (tuple) : plot size 
+        qbins   (list)  : quantiles 
+    """
+    figsize=kwarg.get('figsize',(8,4))
+    qbins=kwarg.get('qbins',None)
     
-    if q==None:
-        q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,0.9, 1]
+    if qbins==None:
+        qbins = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
     
     fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
     pls.title('Histogram of {}'.format(feature)); 
@@ -159,8 +270,8 @@ def plot_qcuts(df,feature,target,q=None, figsize=(8,4)):
     ax1.set_ylabel('count')
     ax2.set_xlabel(feature) 
     ax2.set_ylabel(target)
-    df.groupby(pd.qcut(df[feature], q=q,duplicates='drop'))[target].count().plot(kind='bar',ax=ax1,grid=True)
-    df.groupby(pd.qcut(df[feature], q=q,duplicates='drop'))[target].mean( ).plot(kind='bar',ax=ax2,grid=True)
+    df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target].count().plot(kind='bar',ax=ax1,grid=True)
+    df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target].mean( ).plot(kind='bar',ax=ax2,grid=True)
 
     pls.show()    
                       
@@ -168,10 +279,27 @@ def plot_qcuts(df,feature,target,q=None, figsize=(8,4)):
 # categorical 
 #=====================#=====================#=====================#=====================
 
-def plot_stats(df,feature,target,max_nbr=20,sort='Count ',ax1=None,ax2=None):
-    
-    end=max_nbr
-    createfig=(ax1==None or ax2==None)
+def plot_stats(df,feature,target,**kwarg):
+    """Plots target statistcs per feature value.
+
+    Plots target mean and count per categorical feature value.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        feature   (str): feature to group data
+        target    (str): feature to calculate statiscs 
+          
+    Keyword Args:
+        ax         (list): matplotlib.axes, subplots list 
+        maxcount   (int) : maximum number of features to display
+        figsize    (list): figure size
+        sortby     (str) : sort column name
+    """    
+    maxcount=kwarg.get('maxcount',20)
+    ax=kwarg.get('ax',None)
+    sort=kwarg.get('sortby','Count ')
+    end=maxcount
+
     cat_count = df[feature].value_counts().reset_index()
     cat_count.columns = [feature,'Count ']
     cat_count.sort_values(by=sort, ascending=False, inplace=True)
@@ -180,25 +308,38 @@ def plot_stats(df,feature,target,max_nbr=20,sort='Count ',ax1=None,ax2=None):
     cat_perc=pd.merge(cat_perc,cat_count,on=feature)
     cat_perc.sort_values(by=sort, ascending=False, inplace=True)
     
-    size=(12,6) if len(cat_count[:max_nbr]) <=40 else (12,14)
-    if createfig:
-        fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=size)
+    size=kwarg.get('figsize',(12,6) if len(cat_count[:maxcount]) <=40 else (12,14))
+    if ax is None:
+        fig, ax = pls.subplots(ncols=2, figsize=size)
         
     sns.set_color_codes("pastel")
-    s = sns.barplot(ax=ax1, x = feature, y="Count ",order=cat_count[feature][:max_nbr],data=cat_count[:max_nbr])
+    s = sns.barplot(ax=ax[0], x = feature, y="Count ",order=cat_count[feature][:maxcount],data=cat_count[:maxcount])
     s.set_xticklabels(s.get_xticklabels(),rotation=90)   
     
-    s = sns.barplot(ax=ax2, x = feature, y=target, order=cat_perc[feature][:max_nbr], data=cat_perc[:max_nbr])  
+    s = sns.barplot(ax=ax[1], x = feature, y=target, order=cat_perc[feature][:maxcount], data=cat_perc[:maxcount])  
     s.set_xticklabels(s.get_xticklabels(),rotation=90)
         
     pls.ylabel(target, fontsize=10)
     pls.tick_params(axis='both', which='major', labelsize=10)
 
-    if createfig:
+    if kwarg.get('showfigure',True):
         pls.show()
         
-def plot_melt(df,feature,target1,target2,end=20):
-    
+def plot_melt(df,feature,target1,target2,**kwarg):
+    """Plots two targets statistcs per feature value.
+
+    Plots two targets mean and count per categorical feature value.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        feature   (str):  feature to group data
+        target1   (str):  feature to calculate statiscs 
+        target2   (str):  feature to calculate statiscs 
+        
+    Keyword Args:
+        maxcount   (int) : maximum number of features to display       
+    """    
+    end=kwarg.get('maxcount',20)
     cat_count = df[feature].value_counts().reset_index()
     cat_count.columns =[feature,'Count ']
     cat_count.sort_values(by='Count ', ascending=False, inplace=True)
@@ -230,86 +371,123 @@ def plot_melt(df,feature,target1,target2,end=20):
 # nan
 #==========================================#=====================#=====================
 
-def plot_na(df):
-    
+def plot_na(df,** kwarg):
+    """Plots persent of nans in each data frame column.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        
+    Keyword Args:
+        figsize (tuple): plot size        
+    """    
     #pls.style.use('seaborn-talk')
 
-    fig = pls.figure(figsize=(18,6))
+    figsize=kwarg.get('figsize',(18,6))
+    fig = pls.figure(figsize=figsize)
     miss = pd.DataFrame((df.isnull().sum())*100/df.shape[0]).reset_index()
-
-    ax = sns.pointplot("index",0,data=miss)
+    ax = sns.pointplot(x="index",y=0,data=miss)
     pls.xticks(rotation =90,fontsize =7)
     pls.title("Missed data")
     pls.ylabel(" %")
     pls.xlabel("Features")
-    
-def print_na(df,maxnbr=None):
-    
-    max_row=max_row=df.shape[0] if maxnbr==None else maxnbr
-    
+
+def print_na(df, **kwarg ):
+    """Print persent of nans in each column.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        
+    Keyword Args:
+        maxcount   (int) : maximum number of features to display
+        
+    """       
     mdf=missing_values_table(df)
     if mdf.shape[0]:
-        print(missing_values_table(df).head(max_row))
+        print(missing_values_table(df).head(kwarg.get('maxcount',df.shape[0])))
     else:
         print('No missed values in dataframe ')
     
-#=====================#=====================#=====================#=====================
-# correlations
-#=====================#=====================#=====================#=====================
+
+def get_top_correlated(df,th=0.01,maxcount=10):
+    """Returns maxcount most correlated numerical features.
+
+    Find all numerical features and select most correlated features names.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        maxcount  (int): Maximum number of features to return.
+        
+    Returns:
+        A list of most correlated feature names .
+
+    """    
+    numeric= [ c for c in df.columns if df[c].dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]]
+    corr=df[numeric].corr()
+    if corr.shape[0]>0:
+        cx=corr.unstack().dropna().abs().sort_values(ascending=False).reset_index()
+        return list(cx[(cx[0]>th)&(cx.level_0!=cx.level_1)]['level_0'].drop_duplicates(keep='first')[:maxcount].values)   
+    else:
+        return []
+      
+def plot_corr(df, **kwargs):   
+    """Plots correlation heatmap for all numerical features.
+
+    Find all numerical features and and plots their correlation heatmap.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+          
+    Keyword Args:
+        maxcount     (int): maximum number of features to draw 
+        figsize    (tuple): heatmap size 
+        features    (list): features list to investigate
+        features_ext(list): to calculate correlation between two different sets of features
+       
+    """
+    numeric= [ c for c in df.columns if df[c].dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]]
+    features=kwargs.get('features',numeric)
+    features_ext=kwargs.get('features_ext',features)      
     
-def corr(df,maxnbr=20,target=None,figsize=None):
-    #
-    # plots correlation heatmap for all numerical features
-    #
-    corr=df.corr()
+    maxcount=kwargs.get('maxcount',len(numeric))
+    
+    corr=df[numeric].corr()
     cx=corr.abs().unstack().sort_values(ascending=False).reset_index().dropna() 
-    lst=list(cx[cx.level_0!=cx.level_1]['level_0'].drop_duplicates(keep='first')[:maxnbr].values)
-    if target!=None and target not in lst:
-        lst.append(target)
-    #show most correlated values
-    if figsize==None:
-        size=min(len(lst),20)
-        figsize=(size,size)
+    if 'features' not in kwargs.keys():
+        features=list(cx[cx.level_0!=cx.level_1]['level_0'].drop_duplicates(keep='first')[:maxcount].values)
+        features_ext=features
+
+    if (len(features)+len(features_ext))<2:
+        return
+    
+    v=min(len(features),min(maxcount,20))
+    figsize=kwargs.get('figsize',(v,v))
+
     fig, ax = pls.subplots(1,1,figsize=figsize)
-    sns.heatmap( corr[corr.index.isin(lst)][lst], cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6)
+    sns.heatmap( corr[corr.index.isin(features)][features_ext], cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6)
     pls.title('Correlation Heatmap')
     pls.show() 
-    return cx
-
-#plots correlation heatmap for features from the list 
-#show all features correlation without filtering
-def corr_x(df,features,figsize=(20,20)):
-    if len(features)>=2:
-        fig, ax = pls.subplots(1,1,figsize=figsize)            
-        sns.heatmap(df[features].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6)
-        pls.title('Correlation Heatmap')
-        pls.show()
-        
-#plots correlation heatmap between features from two lists        
-def corr_2x(df,features_x,features_y,figsize=(20,20)):
-    c=features_x.copy()
-    c.extend(features_y)
-    fig, ax = pls.subplots(1,1,figsize=figsize)
-    sns.heatmap(df[c].corr()[features_y].T[features_x], cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6)
-    pls.title('Correlation Heatmap')
-    pls.show()    
+    return 
+   
        
 #=====================#=====================#=====================#=====================
 # report
 #=====================#=====================#=====================#=====================
 
-def print_features(df,target=None,sorted_features=[]):
+def print_features(df,target=None,sorted_features=[]):   
+    """Plots feature statistics.
 
+    Retrieves rows pertaining to the given keys from the Table instance
+    represented by table_handle.  String keys will be UTF-8 encoded.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+
+    """
     #explore features selected by shap (sorted_features)
     features = sorted_features if len(sorted_features)>0 else df.columns.to_list()
-
-    _,tg_cardinality,_ = get_feature_info(df,target)
-   
     numeric=df.select_dtypes(include=np.number).columns.tolist()
     numeric=list(set(numeric)&set(sorted_features))
-
-    fanova=[]
-            
+    
     for feature in features:
                                                                    
         if feature==target:
@@ -327,235 +505,175 @@ def print_features(df,target=None,sorted_features=[]):
             print ('No values but nan')
             continue
             
-        info = pd.DataFrame(
-        index=['Type :' ,'Distinct count :', 'Missed %:'],
-        columns=[' '])       
+        info = pd.DataFrame(index=['Type :' ,'Distinct count :', 'Missed %:'], columns=[' '])       
         info[' ']=[feature_type,cardinality,missed ]
         print(info.head())
         print('\n ') 
-        
-        #-----------------Categorical
-        
-        if feature_type=='Categorical' or feature_type=='Boolean':
-            if feature_type=='Categorical':
-                    df[feature]=df[feature].fillna('Missed value')
-              
-            if cardinality > df.shape[0]/2.0 :
-                print("Too many values to plot ")
-            elif df[feature].isnull().values.all() :
-                print("All values are null")
-            elif cardinality<2:
-                print("Zero variance")
-                                                                   
-            else:
-                if target != None :
-                    plot_stats(df,feature,target,30)
-                elif cardinality<=40:
-                    fig,ax =  pls.subplots(1, 1,figsize=(9, 5))
-                    df[feature].astype('str').hist()
-                    pls.xticks(rotation='vertical')
-                    pls.show()
-                else:
-                    fig,ax =  pls.subplots(1, 1,figsize=(9, 5))
-                    f=df[feature].value_counts()[:40].index
-                    df[df[feature].isin(f)][feature].hist()
-                    pls.xticks(rotation='vertical')
-                    pls.show()
-                                                                   
-                #count of records with feature=value per day
-                if target != None and  isTime(df.index.dtype) and df.index.nunique()>2:
-                    display(HTML("<h3 align=\"center\">Top {} count per day</h3>".format(feature)))
-                    plot_ntop_categorical_values_counts(df,feature,target,4)
-                
-                    #mean of target for records with feature=value per day
-                    display(HTML("<h3 align=\"center\">{} mean per day </h3>".format(target)))
-                    plot_ntop_categorical_values_means(df,feature,target,4)
-                 
-                if target != None and tg_cardinality>2 and cardinality<40 :
-                    if tg_cardinality>15:
-                        sns.catplot(y=feature,x=target,data=df, orient="h", kind="box",height=7)
-                    else:
-                        sns.catplot(y=feature,x=target,data=df, orient="h", kind="box")
-                    pls.show()
-            
-            #partitioning
-            if len(numeric)>1:
-                depended =[]
-                #to speed up - select 4 most popopular values
-                top=df[feature].value_counts().iloc[:4].index
-                sub=df[df[feature].isin(top)]
-
-                for t in numeric:
-                    try:
-                        #check variance 
-                        if anova(sub,feature,t,False):
-                            depended.append(t)
-                    except Exception:
-                        a=0
-
-                if len(depended)>0:
-                    print('Anova passed for ',depended)
-                    fanova.append(feature)  
-                    if len(depended)>1:
-                        depended=get_top_correlated(sub[depended])
-                        if len(depended)>1:
-                            sns.pairplot(sub,vars=depended,hue=feature,corner=True)
-                            pls.show()
-
-            if feature_type=='Categorical':
-                    df[feature]=df[feature].replace('Missed value',np.nan)      
-        #---------------- Numeric    
-        
+         
+        if feature_type=='Categorical' or feature_type=='Boolean':           
+             explore_categorical(df,feature,target,numeric) 
         elif feature_type=='Numeric':
-            info = pd.DataFrame(
-            index=['dType :' ,'Min :', 'Max :', 'Mean :', 'Std :'],
-            columns=[' '])       
-            info[' ']=[df[feature].dtype,df[feature].min(),df[feature].max(),df[feature].mean(),df[feature].std() ]
-            print(info.head())
-            print('\n ')
-            #pairwise_feature_sum_per_day(df1,df2,feature)
-            #pairwise_feature_mean_per_day(df1,df2,feature)
-            if cardinality<=40:
-                if target !=None :
-                    plot_stats(df,feature,target,40)
-                else:
-                    pls.hist(df[feature])
-                    pls.show()
+             explore_numerical(df,feature,target)                           
+        else:
+             explore_timecolumn(df,feature,target)
                 
-                if target !=None and tg_cardinality>2 and cardinality>2 :
-                    fig,ax =  pls.subplots(1, 1,figsize=(8, 5))
+def explore_timecolumn(df,feature,target): 
+        info = pd.DataFrame(index=['dType :' ,'Min :', 'Max :'],columns=[' '])       
+        info[' ']=[df[feature].dtype,df[feature].min(),df[feature].max()]
+        print(info.head())
+        print('\n ')            
+        print("Time column skip plotting ")  
+        
+def explore_categorical(df,feature,target,numeric,maxcount=4):
+   
+    df[feature]=df[feature].fillna('Missed value')
+
+    tg_cardinality=df[target].nunique() 
+    cardinality=df[feature].nunique()
+    
+    if cardinality > df.shape[0]/2.0 :
+        print("Too many values to plot ")
+    elif df[feature].isnull().values.all() :
+        print("All values are null")
+    elif cardinality<2:
+        print("Zero variance")
+                                                                   
+    else:
+        if target != None :
+            plot_stats(df,feature,target,maxcount=30)
+        elif cardinality<=40:
+            fig,ax =  pls.subplots(1, 1,figsize=(9, 5))
+            df[feature].astype('str').hist()
+            pls.xticks(rotation='vertical')
+            pls.show()
+        else:
+            fig,ax =  pls.subplots(1, 1,figsize=(9, 5))
+            f=df[feature].value_counts()[:40].index
+            df[df[feature].isin(f)][feature].hist()
+            pls.xticks(rotation='vertical')
+            pls.show()
+
+        #count of records with feature=value per day
+        if target != None and  isTime(df.index.dtype) and df.index.nunique()>2:
+            display(HTML("<h3 align=\"center\">Top {} count per day</h3>".format(feature)))
+            plot_ntop_categorical_values(df,feature,target,method_name='count')
+
+            #mean of target for records with feature=value per day
+            display(HTML("<h3 align=\"center\">{} mean per day </h3>".format(target)))
+            plot_ntop_categorical_values(df,feature,target,method_name='mean')
+
+        if target != None and tg_cardinality>2 and cardinality<40 :
+            if tg_cardinality>15:
+                sns.catplot(y=feature,x=target,data=df, orient="h", kind="box",height=7)
+            else:
+                sns.catplot(y=feature,x=target,data=df, orient="h", kind="box")
+            pls.show()
+            
+    #partitioning
+    if len(numeric)>1:
+        depended =[]
+
+        #to speed up - select 4 most popopular values
+        top=df[feature].value_counts().iloc[:maxcount].index
+        sub=df[df[feature].isin(top)]
+
+        for t in numeric:
+            try:
+                #check variance 
+                if anova(sub,feature,t,False):
+                    depended.append(t)
+            except Exception:
+                pass
+
+        if len(depended)>0:
+            print('Anova passed for ',depended)
+            if len(depended)>1:
+                depended=get_top_correlated(sub[depended])
+                if len(depended)>1:
+                    sns.pairplot(sub,vars=depended,hue=feature,corner=True)
+                    pls.show()
+
+    df[feature]=df[feature].replace('Missed value',np.nan)      
+                                
+def explore_numerical(df,feature,target):
+   
+        tg_cardinality=df[target].nunique() 
+        cardinality=df[feature].nunique()
+    
+        info = pd.DataFrame(
+        index=['dType :' ,'Min :', 'Max :', 'Mean :', 'Std :'],
+        columns=[' '])       
+        info[' ']=[df[feature].dtype,df[feature].min(),df[feature].max(),df[feature].mean(),df[feature].std() ]
+        print(info.head())
+        print('\n ')
+        
+        #pairwise_feature_sum_per_day(df1,df2,feature)
+        #pairwise_feature_mean_per_day(df1,df2,feature)
+        if cardinality<=40:
+            if target !=None :
+                plot_stats(df,feature,target,maxcount=40)
+            else:
+                pls.hist(df[feature])
+                pls.show()
+
+            if target !=None and tg_cardinality>2 and cardinality>2 :
+                
+                fig,ax =  pls.subplots(1, 1,figsize=(8, 5))
+                pls.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
+                ax.set_xlabel(feature)
+                ax.set_ylabel(target)
+                pls.show()
+
+            if target !=None and tg_cardinality>2:
+                if tg_cardinality>15:
+                    sns.catplot(y=feature,x=target,data=df, orient="h", kind="box",height=7)
+                else:
+                    sns.catplot(y=feature,x=target,data=df, orient="h", kind="box")
+                pls.show()
+        else:
+            #df[feature].hist() 
+
+            #distribution
+            fig,ax = pls.subplots(1, 2,figsize=(16, 5))
+            sns.distplot(df[feature],kde=True,ax=ax[0]) 
+            ax[0].axvline(df[feature].mean(),color = "k",linestyle="dashed",label="MEAN")
+            ax[0].legend(loc="upper right")
+            ax[0].set_title('Skewness = {:.4f}'.format(df[feature].skew()))
+            sns.boxplot(df[feature],color='blue',orient='h',ax=ax[1])
+            pls.show()
+                
+            if  target !=None :
+
+                if tg_cardinality < 10:
+                    fig,ax = pls.subplots(1, 2,figsize=(16, 5))
+                    #ax[0].scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
+                    #ax[0].set_xlabel(feature)
+                    #ax[0].set_ylabel(target)
+                    sns.kdeplot(data=df, x=feature, hue=target, multiple="stack" ,ax=ax[0])
+                    sns.violinplot(x=target, y=feature, data=df, ax=ax[1], inner='quartile')
+                    pls.show()  
+                else:
+                    #continues - continues
+                    plot_qcuts(df,feature,target)
+                    q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,1]
+                    df['cuts__'+feature]=pd.qcut(df[feature],q=q,duplicates='drop')
+                    sns.catplot(x=target,y='cuts__'+feature,data=df, orient="h", kind="box") 
+                    pls.show()
+                    del df['cuts__'+feature]
+                    fig,ax = pls.subplots(1, 1,figsize=(8, 5))
                     pls.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
                     ax.set_xlabel(feature)
                     ax.set_ylabel(target)
                     pls.show()
-                    
-                if target !=None and tg_cardinality>2:
-                    #.sample(min(df.shape[0],100000))
-                    if tg_cardinality>15:
-                        sns.catplot(y=feature,x=target,data=df, orient="h", kind="box",height=7)
-                    else:
-                        sns.catplot(y=feature,x=target,data=df, orient="h", kind="box")
-                    pls.show()
-            else:
-                #df[feature].hist() 
-                
-                #distribution
-                fig,ax = pls.subplots(1, 2,figsize=(16, 5))
-                sns.distplot(df[feature],kde=True,ax=ax[0]) 
-                ax[0].axvline(df[feature].mean(),color = "k",linestyle="dashed",label="MEAN")
-                ax[0].legend(loc="upper right")
-                ax[0].set_title('Skewness = {:.4f}'.format(df[feature].skew()))
-                sns.boxplot(df[feature],color='blue',orient='h',ax=ax[1])
-                pls.show()
-                
-                if  target !=None :
-                    
-                    if tg_cardinality < 10:
-                        fig,ax = pls.subplots(1, 2,figsize=(16, 5))
-                        #ax[0].scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
-                        #ax[0].set_xlabel(feature)
-                        #ax[0].set_ylabel(target)
-                        sns.kdeplot(data=df, x=feature, hue=target, multiple="stack" ,ax=ax[0])
-                        sns.violinplot(x=target, y=feature, data=df, ax=ax[1], inner='quartile')
-                        pls.show()  
-                    else:
-                        #continues - continues
-                        plot_qcuts(df,feature,target)
-                        q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,1]
-                        df['cuts__'+feature]=pd.qcut(df[feature],q=q,duplicates='drop')
-                        sns.catplot(x=target,y='cuts__'+feature,data=df, orient="h", kind="box") 
-                        pls.show()
-                        del df['cuts__'+feature]
-                        fig,ax = pls.subplots(1, 1,figsize=(8, 5))
-                        pls.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
-                        ax.set_xlabel(feature)
-                        ax.set_ylabel(target)
-                        pls.show()
-                        
-                       
-        else:
-            info = pd.DataFrame(
-            index=['dType :' ,'Min :', 'Max :'],
-            columns=[' '])       
-            info[' ']=[df[feature].dtype,df[feature].min(),df[feature].max()]
-            print(info.head())
-            print('\n ')
-            
-            print("Time column skip plotting ")
-            
-                                            
-def do_eda(df,target,ignore=[],nbrmax=None,figsize=(20,4),linewidth=2):
     
-    if target!=None and target not in df.columns.to_list():
-        print("{} not in dataframe - Ignore".format(target))
-        target=None
-        
-    if nbrmax==None:
-        print('Shap values for max 20 most important features will be plotted. If you need more please set nbrmax parameter')
-        nbrmax=20
-        
-    #detect time columns
-    df = df.apply(lambda col: safe_convert(col) if col.dtypes == object else col, axis=0)
-    
-    #print nans statistics
-    header('Missed values' )
-    print_na(df)
-                      
-    #print shap values for each frame predicting targed
-    feature_type,cardinality,missed = get_feature_info(df,target)
-    
-    if feature_type=='Numeric' :
-        header('Shap values')
-        sorted_features=plot_shaps(df,target,ignore=ignore,nbrmax=nbrmax)#[:nbrmax]
-    else:
-        sorted_features=[f for f in df.columns.tolist() if f not in ignore]
-        #list(set(df.columns.tolist())-set(ignore))
-
-
-    # if dataframe has timedate index - plot time series
-    if target !=None and  isTime(df.index.dtype) and df.index.nunique()> 2:
-        header('Time series' )
-        ax=df[target].resample('1d').mean().plot( grid=True,x_compat=True,figsize=figsize,linewidth=linewidth,label=target)
-        pls.title(' {} mean per day '.format(target))
-        pls.legend()
-        pls.show() 
-    
-    
-    header('Features' )
-    print_features(df,target,sorted_features)
-     
-    #for numeric variables only
-    header('Pearson correlations' )     
-    cx=corr(df,nbrmax,target) 
-
-    #correlations of categorical variables
-    header('Cramers V staticstics' )    
-    #third parameter max features to display
-    plot_cramer_v_corr(df,max_features=nbrmax,ignore=ignore) 
-
-    #plot 10 most correlated features
-    header('Top correlated features' )  
-    f=list(cx[(cx[0]>0.099)&(cx.level_0!=cx.level_1)]['level_0'].drop_duplicates(keep='first')[:6].values)
-    g=sns.pairplot(df[f])  
-    for ax in g.axes.flatten():
-        ax.set_xlabel(ax.get_xlabel(), rotation = 90)
-        ax.set_ylabel(ax.get_ylabel(), rotation = 0)
-        ax.yaxis.get_label().set_horizontalalignment('right')
-    
-    return sorted_features
-
-def get_top_correlated(df,th=0.099,maxcount=10):
-    
-    corr=df.corr()
-    if corr.shape[0]>0:
-        cx=corr.unstack().dropna().abs().sort_values(ascending=False).reset_index()
-        return list(cx[(cx[0]>th)&(cx.level_0!=cx.level_1)]['level_0'].drop_duplicates(keep='first')[:maxcount].values)   
-    else:
-        return []
-    
-
 def one_to_many(df,fiterout=True):
-    
+    """Prints the maximum count of feature value thats corresponds to on value of onother feature.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        fiterout (bool): flag to finsd only one-to-one or one-to-many features
+
+    """    
     features =  df.columns.to_list()
     
     for f11 in  range(len(features)):
@@ -564,156 +682,191 @@ def one_to_many(df,fiterout=True):
             c1=df.groupby(features[f22])[features[f11]].nunique().max()
             if not fiterout or c1<2 or c2<2:
                 print(features[f11],' - ',features[f22],'\n\t relation ',c1,' : ',c2)
+
+def tryanova(sub,f,t,maxcount):
+    try:
+        #check variance 
+        if anova(sub,f, t,False):
+            header(f+' - '+ t,sz='h3')
             
-def interactions2x(ddf,feature=[],target=[],maxnbr=4,bins=True):
+            if maxcount>6:
+                fig, ax = pls.subplots(figsize=(14, 8))
+            else:
+                fig, ax = pls.subplots(figsize=(8, 6))    
+
+            sns.barplot(x=f, y=t, data=sub, ax=ax)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+            pls.show()
+            turkey=turkeyHSD(sub,f,t)
+            if turkey.shape[0]>0:
+                print('turkeyHSD')
+                print(turkey)
+                print('\n')
+            return True
+    except Exception as e:
+        #pass
+        print(e)
+    return False
+
+def interactions2x(ddf,**kwarg):
+    """2 nd order interactions plots
     
+         Check categorical varibles and binned numerical against the numerical varibles by ANOVA 
+         and in case if diffrence in means is significant, display plots and Tukey's HSD
+         (honestly significant difference) test results
+
+    Args:
+        df    (DataFrame): pandas DataFrame
+    Keyword Args:
+        features  (list) : indepepended variables list
+        target    (list) : continues depended variables list
+        maxcount   (int) : maximum number of features to display
+        cuts      (bool) : cut continues indepepended variables on bins or ignore
+
+    Returns:
+        depended features dictionary
+
+    """    
     df=ddf.copy()
+    
+    categorical= get_categorical(df,maxmissed=0.9,binary=True)
+    numeric= [ c for c in df.columns if df[c].dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]]
+
+    target=kwarg.get('target',None)
+    features=kwarg.get('features',None)
+    cuts=kwarg.get('cuts',False)
+    maxcount=kwarg.get('maxcount',6)
     
     with pd.option_context('mode.use_inf_as_na', True):    
         if df.isnull().values.any():
             print('Warning: dataframe contains nan or inf , please fix or drop them to obtain better results. \n')
-            df=df.fillna(0)
+            df[numeric]=df[numeric].fillna(0)
+            df[categorical]=df[categorical].fillna('missed')
     
-    features =  df.columns.to_list() if len(feature)==0 else feature
+    
+    target=set(numeric)&set(target) if target is not None else set(numeric)        
+    features=(set(numeric)|set(categorical))&set(features) if features is not None else (set(numeric)|set(categorical))
    
-    candidates=[]
-    numeric=target.copy()
+    if  len(features)<1 or len(target)<1:
+        return None 
     
-    for f in features:                                                                                                                                                       
-        feature_type,cardinality,missed = get_feature_info(df,f)
-        
-        if feature_type=='Categorical' or feature_type=='Boolean' and\
-            cardinality < df.shape[0]/2.0 and not df[f].isnull().values.all()\
-            and cardinality>=2:
-            candidates.append(f)
-                                                                   
-        elif feature_type=='Numeric':
-           
-            if len(target)==0 and cardinality> 1:
-                numeric.append(f)
-                
-            if cardinality < df.shape[0]/2.0 and cardinality>=2 and cardinality < 40:
-                candidates.append(f)
-            elif bins:
-                q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-                df['cuts__'+f]=pd.qcut(df[f], q=q,duplicates='drop')
-               
-                #df['cuts__'+f]=pd.cut(df[f], bins=[0,1,2,3,5,10,15,20,60,100,1000])
-                #df['cuts__'+f]=df['cuts__'+f].astype(str)
-                
-                candidates.append('cuts__'+f)
     fanova={}
-   
-    if  len(candidates)<1:
-        return fanova      
-
-    i=0
-    for f1 in candidates:
-            i=i+1
-            top=df[f1].value_counts().iloc[:maxnbr].index
-            sub=df[df[f1].isin(top)].copy()
-            sub['count']=1
-            if False:
-                for f2 in candidates[i:]:
-                    if f1==f2:
-                        continue
-                        
-                    header(f1+' - '+ f2,sz='h3')
-                    print('relation ',df.groupby(f1)[f2].nunique().max(),' : ',df.groupby(f2)[f1].nunique().max())
-
-                    top2=sub[f2].value_counts().iloc[:maxnbr].index
-                    sub2=sub[sub[f2].isin(top2)].copy()
-                    ds=sub2.groupby([f1,f2])['count'].count().reset_index()
-                    
-                    if ds['count'].min()/ds['count'].max()<0.8 :            
-                        fig, ax = pls.subplots(figsize=(8, 6)) 
-                        sns.barplot(x=f1, y='count', hue=f2, data=ds,ax=ax)
-                        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
-                        pls.show()
-            #to speed up - select 4 most popopular values
-            
-            if len(numeric)<1 :
+    for f in features & set(categorical):
+        topK=df[f].value_counts().iloc[:maxcount].index
+        sub=df[df[f].isin(topK)].copy()
+        sub['count']=1
+        depended=[]
+        for t in target:
+            if t==f:
                 continue
-
+            if tryanova(sub,f,t,maxcount):
+                depended.append(t)
+        if len(depended)>0:
+                print(f, ' - ',depended,'\n\n\n') 
+                fanova[f]= depended   
+                
+        if len(depended)>1:
+                if len(depended)>maxcount:
+                    depended=get_top_correlated(sub[depended],maxcount=maxcount)
+                sns.pairplot(sub,vars=depended,hue=f,corner=True)
+                pls.show()        
+    if cuts:            
+        for f in features & set(numeric):
             depended=[]
-            for t in numeric:
-                if ('cuts__'+t) ==f1 or t ==f1:
+            for t in target:
+                if t==f:
                     continue
-                    
-                #print(f1,' - ',t)
-                try:
-                    #check variance 
-                    if anova(sub,f1,t,False):
-                        header(f1+' - '+ t,sz='h3')
+                if df[[t,f]].corr().values[0,1]>0.1:
+                    depended.append(t)
+                elif stats.spearmanr(df[f], df[t]).correlation>0.1:
+                    depended.append(t)
+                elif cuts:
+                    q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+                    df['cuts__'+f]=pd.qcut(df[f], q=q,duplicates='drop')
+                    topK=df['cuts__'+f].value_counts().iloc[:maxcount].index
+                    sub=df[df['cuts__'+f].isin(topK)].copy()
+                    sub['count']=1
+                    if tryanova(sub,'cuts__'+f,t,maxcount):
                         depended.append(t)
-                        if maxnbr>6:
-                            fig, ax = pls.subplots(figsize=(14, 8))
-                        else:
-                            fig, ax = pls.subplots(figsize=(8, 6))                            
-                        sns.barplot(x=f1, y=t, data=sub,ax=ax)
-                        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
-                        pls.show()
-                        turkey=turkeyHSD(sub,f1,t)
-                        if turkey.shape[0]>0:
-                            print('turkeyHSD')
-                            print(turkey)
-                            print('\n')
-                except Exception as e:
-                    a=0
-                    #print(e)
-          
-            if len(depended)>0:
-                print(f1, ' - ',depended,'\n\n\n') 
-                fanova[f1]= depended
-                depended=get_top_correlated(sub[depended])
+            if depended:
+                    print(f, ' - ',depended,'\n\n\n') 
+                    fanova[f]= depended.copy()
 
-                if len(depended)>1:               
-                    sns.pairplot(sub,vars=depended,hue=f1,corner=True)
+            if len(depended)>1:  
+                    depended.append(f)
+                    corr=df[depended].corr()[f]
+                    corr=np.abs(corr)
+                    corr=corr.sort_values()[-maxcount:].index.to_list()                
+                    sns.pairplot(df,vars=corr,corner=True)
                     pls.show()
+            elif len(depended)>0: 
+                sns.scatterplot(x=df[f],y=df[depended[0]])
+                pls.show()
+                
     return fanova
 
 
-def interactions3x(ddf,feature=[],target=[],verbose=False,maxnbr=6):
+def interactions3x(ddf,features=None,**kwarg):   
+    """ 3nd order interactions plots.
+
+    Check categorical varibles and binned numerical against the numerical varibles by 
+    two-way ANOVA   and in case if diffrence in means is significant, display plots
     
+    Args:
+        df  (DataFrame): pandas DataFrame
+    Keyword Args:
+        features  (list) : indepepended variables list
+        target    (list) : continues depended variables list
+        maxcount   (int) : maximum number of features to display
+        verbose   (bool) : detailed output or short
+    Returns:
+        depended features dictionary
+
+    """    
     df=ddf.copy()
+    categorical= get_categorical(df,maxmissed=0.9,binary=True)
+    numeric= [ c for c in df.columns if df[c].dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]]
+    
+    target=kwarg.get('target',None)
+    features=kwarg.get('features',None)
+    verbose=kwarg.get('verbose',False)
+    maxcount=kwarg.get('maxcount',6)
     
     with pd.option_context('mode.use_inf_as_na', True):    
         if df.isnull().values.any():
             print('Warning: dataframe contains nan or inf , please fix or drop them to obtain better results. \n')
-            df=df.fillna(0)
+            df[numeric]=df[numeric].fillna(0)
+            df[categorical]=df[categorical].fillna('missed')
+
     
-    features = df.columns.to_list() if len(feature)==0 else feature
-   
-    candidates=[]
-    numeric=target.copy()
-    
-    for f in features:                                                                                                                                                       
-        feature_type,cardinality,missed = get_feature_info(df,f)
+    target=set(numeric)&set(target) if target is not None else set(numeric)        
+  
+    if features is not None:
+        categorical= set(categorical)&set(features)
+        numeric= set(numeric)&set(features)
         
-        if (feature_type=='Categorical' or feature_type=='Boolean') and\
-            cardinality < df.shape[0]/2.0 and not df[f].isnull().values.all()\
-            and cardinality>=2:
-            candidates.append(f)
-                                                                   
-        elif feature_type=='Numeric':
-            if len(target)==0 and cardinality> 1:
-                numeric.append(f)
+    features=list(categorical)
+    fanova={}
+    
+    for f in numeric:  
+        cardinality=df[f].nunique()                                                
+        if cardinality < df.shape[0]/2.0 and cardinality>=2 and cardinality < 40:
+            features.append(f)
+            continue
+        else:
+            q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,0.9, 1]
+            df['cuts__'+f]=pd.qcut(df[f], q=q,duplicates='drop')
+            df['cuts__'+f]=df['cuts__'+f].astype(str)
+            features.append('cuts__'+f)
                 
-            if cardinality < df.shape[0]/2.0 and cardinality>=2 and cardinality < 40:
-                candidates.append(f)
-            else:
-                q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,0.9, 1]
-                df['__'+f]=pd.qcut(df[f], q=q,duplicates='drop')
-                df['__'+f]=df['__'+f].astype(str)
-                
-                candidates.append('__'+f)
-                
-    for ff1 in range(len(candidates)-1):
-        f1=candidates[ff1]
-        top1=df[f1].value_counts().iloc[:maxnbr].index
-        for ff2 in range(ff1+1,len(candidates)):
-            sub1=df[df[f1].isin(top1)]
-            f2=candidates[ff2]
+    if  len(features)<1 or len(target)<1:
+        return None 
+    
+    for i in range(len(features)-1):
+        f1=features[i]
+        for j in range(i+1,len(features)):
+            sub1=df[df[f1].isin(df[f1].value_counts().iloc[:maxcount].index)]
+            f2=features[j]
             header(f1+' - '+ f2,sz='h3')
             
             #one-to-one
@@ -724,15 +877,18 @@ def interactions3x(ddf,feature=[],target=[],verbose=False,maxnbr=6):
             print('relation ',df.groupby(f1)[f2].nunique().max(),' : ',df.groupby(f2)[f1].nunique().max())
             sub1[f1+f2]=sub1[f1].astype(str)+sub1[f2].astype(str)
             
-            top=sub1[[f1,f2,f1+f2]].dropna()[f2].value_counts()[:maxnbr].index
+            top=sub1[[f1,f2,f1+f2]].dropna()[f2].value_counts().iloc[:maxcount].index
             sub=sub1[sub1[f2].isin(top)]
             
             depended=[] 
-            for t in numeric:
-                print('\n\n',t)
-                if ('__'+t) in [f1, f2] or t in [f1,f2]:
+            
+            for t in target:
+                
+                if ('cuts__'+t) in [f1, f2] or t in [f1,f2]:
                     continue
-
+                    
+                print('\n\n',t)
+                
                 try:
                                         
                     res=two_way_anova(sub[[f1,f2,f1+f2,t]].dropna(),f1,f2,t)
@@ -743,21 +899,24 @@ def interactions3x(ddf,feature=[],target=[],verbose=False,maxnbr=6):
                         print('Anova passed')
                         #print(f1,f2,t)
                         depended.append(t)
-                        if maxnbr>6:
+                        if maxcount>6:
                             fig, ax = pls.subplots(figsize=(14, 8))
                         else:
                             fig, ax = pls.subplots(figsize=(8, 6)) 
+                            
                         sns.barplot(x=f1, y=t, hue=f2, data=sub,ax=ax)
                         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
                         pls.show()
+                        
                         print('turkeyHSD')
                         print(turkeyHSD(sub,f1+f2,t))
                     else:
                         if verbose:
-                            if maxnbr>6:
+                            if maxcount>6:
                                 fig, ax = pls.subplots(figsize=(14, 8))
                             else:
                                 fig, ax = pls.subplots(figsize=(8, 6)) 
+                                
                             bar=sns.barplot(x=f1, y=t, hue=f2, data=sub,ax=ax)
                             ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
                             pls.show()                            
@@ -765,35 +924,61 @@ def interactions3x(ddf,feature=[],target=[],verbose=False,maxnbr=6):
 
                 except Exception as e:
                     print('nan',e)
-                    a=0
-            if len(depended)>0:        
-                print(depended)     
+                    pass
+                
+            if depended:        
+                print(depended)
+                fanova[f1+' '+ f2]= depended.copy()
             
-            if len(depended)>0:         
+            if depended:         
                 if len(depended)>1: 
-                    top2=sub[[f1,f2,f1+f2]].dropna()[f1+f2].value_counts().index[:maxnbr]
-                    sns.pairplot(sub[sub[f1+f2].isin(top2)],vars=depended,hue=f1+f2,corner=True)
+                    top=sub[[f1,f2,f1+f2]].dropna()[f1+f2].value_counts().index[:maxcount]
+                    sns.pairplot(sub[sub[f1+f2].isin(top)],vars=depended,hue=f1+f2,corner=True)
                     pls.show()
                 for t in depended:
                     print(f1+'*'+f2+'='+t)
                     g = sns.catplot(x=t, y=f1, row=f2, kind="box", orient="h", height=1.5, aspect=4,data=sub)
                     pls.show()
                     
-
+    return fanova
 
 #=====================#=====================#=====================
 # time series plots
 #=====================#=====================#=====================
 
-def plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, method_name,sample=False):
-    
-    if sample:
-        values=df[feature].value_counts().sample(nbr_max).index.to_list()
+def plot_ntop_categorical_values(df,feature,target,**kwarg):
+    """Plots n top feature values counts per day   
+
+    Group dataframe by categorical feature value and calculates target statistics
+    along datetime index 
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        feature   (str): feature for grouping (categorical)
+        target    (str): feature to average 
+    Keyword Args:
+        maxcount    (int): maximum number of features to display
+        sample     (bool): if True select maxcount values randomly
+                           if False select maxcount top features
+        figsize   (tuple): plot size 
+        linewidth (float): line width
+        period      (str): sampling period
+        method_name (str): sum,count,mean etc
+
+    """  
+    maxcount=kwarg.get('maxcount',4)
+    if kwarg.get('sample',False):
+        values=df[feature].value_counts().sample(maxcount).index.to_list()
     else:
-        values=df[feature].value_counts()[:nbr_max].index.to_list()
+        values=df[feature].value_counts()[:maxcount].index.to_list()
         
     if  len(values)==0:
         return
+    
+    figsize=kwarg.get('figsize',(20,4))
+    linewidth=kwarg.get('linewidth',2.0)
+    period=kwarg.get('period',"1d")
+    method_name=kwarg.get('method_name','count')
     
     resampler=df[df[feature]==values[0]][target].resample(period)
     ax=getattr(resampler,method_name)().plot(x_compat=True,figsize=figsize, grid=True,linewidth=linewidth)
@@ -801,7 +986,8 @@ def plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth
     
     for i in range(1,len(values)):
         resampler=df[df[feature]==values[i]][target].resample(period)
-        getattr(resampler,method_name)().plot(x_compat=True, figsize=figsize,ax=ax, grid=True, linewidth=2.0,title='{} per day'.format(feature))
+        getattr(resampler,method_name)().plot(x_compat=True, figsize=figsize,ax=ax, grid=True, linewidth=linewidth,
+                                              title='{} {} per day'.format(feature,method_name))
         legend.append(values[i])
 
     if len(values) > 1:
@@ -810,24 +996,6 @@ def plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth
     pls.legend(legend, bbox_to_anchor=(1.2, 0))
     pls.show()
     
-# plots n top feature values counts per day   
-def plot_ntop_categorical_values_counts(df,feature,target, nbr_max=4, figsize=(20,4), linewidth=2.0, period="1d",sample=False):
-
-    plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, 'count',sample)
-    return
-    
-    
-def plot_ntop_categorical_values_sums(df,feature,target,nbr_max=4,figsize=(20,4),linewidth=2.0,period="1d",sample=False):
-    
-    plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, 'sum',sample)
-    return
-
-    
-def plot_ntop_categorical_values_means(df,feature,target,nbr_max=4,figsize=(20,4),linewidth=2.0,period="1d",sample=False):
-    
-    plot_ntop_categorical_values_(df,feature,target, nbr_max, figsize, linewidth, period, 'mean',sample)
-    return    
-
     
 #=====================#=====================#=====================#=====================
 # cramers V
@@ -839,11 +1007,30 @@ def plot_ntop_categorical_values_means(df,feature,target,nbr_max=4,figsize=(20,4
 import scipy.stats as ss
 import itertools
 
+def get_categorical(df,maxmissed=0.6,binary=True):
+    """Select features for cramer v plot  - categorical or binary,
+       features with too many different values are ignored
+    """    
+    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64','datetime64','m8[ns]'] 
+    
+    #keep columns with % of missed less then 60
+    categoricals = df.loc[:, df.isnull().mean() <= maxmissed].select_dtypes(exclude=numerics).columns.to_list()
+    
+    if binary:
+        #add binary columns
+        bool_cols = [col for col in df.select_dtypes(include=numerics).columns.to_list() if 
+                   df[col].dropna().value_counts().index.isin([0,1]).all()]
+
+        categoricals.extend(bool_cols)
+    
+    #drop columns with no variance and with too much variance (id etc) 
+    categoricals=[col for col in categoricals if 
+               df[col].dropna().nunique() >1 and df[col].nunique() < df.shape[0]/2]
+       
+    return categoricals
+
 def cramers_corrected_stat(confusion_matrix):
-    """ calculate Cramers V statistic for categorical-categorical association.
-        uses correction from Bergsma and Wicher, 
-        Journal of the Korean Statistical Society 42 (2013): 323-328
-    """
+    
     chi2 = ss.chi2_contingency(confusion_matrix)[0]
     n = confusion_matrix.sum().sum()
     phi2 = chi2/n
@@ -853,8 +1040,41 @@ def cramers_corrected_stat(confusion_matrix):
     kcorr = k - ((k-1)**2)/(n-1)
     return np.sqrt(phi2corr / min( (kcorr-1), (rcorr-1)))
     
-def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
+def plot_cramer_v_corr(df,**kwarg):
+    """Plots features correlation (Theil’s U, conditional_entropy) heatmap.
 
+    Theil’s U, conditional_entropy (no symetrical)
+    https://towardsdatascience.com/the-search-for-categorical-correlation-a1cf7f1888c9
+    https://github.com/shakedzy/dython/blob/master/dython/nominal.py
+    https://stackoverflow.com/a/46498792/5863503 
+    
+    Args:
+        df  (DataFrame): pandas DataFrame
+        target    (str): Dependend feature name
+        
+    Keyword Args:
+        categoricals (list): list of feature to explore. 
+                             If is not set all availible categorical 
+                             or binary features are used
+        maxcount   (int) :   maximum number of features to explore
+        ignore     (list):   list of features to ignore 
+        figsize    (tuple):  plot size
+        ax         (list):   matplotlib.axes, subplots list 
+        
+      
+    """  
+    ignore=kwarg.get('ignore',None)
+    categoricals=kwarg.get('categoricals',get_categorical(df))
+    maxcount=kwarg.get('maxcount',len(categoricals))
+    if ignore is not None:
+        categoricals=list(set(categoricals)-set(ignore))
+    categoricals=categoricals[:maxcount]
+    if len(categoricals)<=1:
+        return
+    
+    figsize=kwarg.get('figsize',(10,10))
+    ax=kwarg.get('ax',None)
+    
     fig=None
     if ax==None:
         fig, ax = pls.subplots(1,1,figsize=figsize)
@@ -877,43 +1097,7 @@ def cramer_v_corr(df,categoricals,ax=None,figsize=(10,10)):
     if fig!=None:#local figure
         pls.show()
 
-def get_categorical(df,ignore=[]):
-    
-    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64','datetime64','m8[ns]'] 
-    
-    #keep columns with % of missed less then 60
-    categoricals = df.loc[:, df.isnull().mean() <= .6].select_dtypes(exclude=numerics).columns.to_list()
-    
-    #add binary columns
-    bool_cols = [col for col in df.select_dtypes(include=numerics).columns.to_list() if 
-               df[col].dropna().value_counts().index.isin([0,1]).all()]
-    
-    categoricals.extend(bool_cols)
-    
-    #drop columns with no variance and with too much variance (id etc) 
-    categoricals=[col for col in categoricals if 
-               df[col].dropna().nunique() >1 and df[col].nunique() < df.shape[0]/2]
-    
-    
-    return list(set(categoricals)-set(ignore))
 
-
-def plot_cramer_v_corr(df,max_features=20,ax=None,ignore=[]):
-    # plot features correlation (Theil’s U, conditional_entropy) heatmap
-    #max_features max features to display
-    #features are selected automaticly - categorical or binary  
-    #features with too many different values are ignored
-    
-    categorical=get_categorical(df,ignore)[:max_features]
-
-    if len(categorical)>1:
-        cramer_v_corr(df,categorical,ax)
-
-    #Theil’s U, conditional_entropy (no symetrical)
-    #https://towardsdatascience.com/the-search-for-categorical-correlation-a1cf7f1888c9
-    #https://github.com/shakedzy/dython/blob/master/dython/nominal.py
-    #https://stackoverflow.com/a/46498792/5863503
-    
 #=====================#=====================#=====================#=====================
 # nan
 #=====================#=====================#=====================#=====================
@@ -940,17 +1124,7 @@ def header(title,sz='h2'):
     
 #=====================#=====================#=====================#=====================
 # features 
-#=====================#=====================#=====================#=====================
-
-def get_feature_type_(dtype):
-    if dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]:
-        return 'Numeric'
-    elif isTime(dtype):
-        return 'Time'
-    elif dtype in [np.bool]:
-        return 'Boolean'
-    else:
-        return 'Categorical'   
+#=====================#=====================#=====================#=====================  
         
 def get_feature_type(s):
     if s.dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]:
@@ -967,21 +1141,23 @@ def get_feature_info(df,feature):
         cardinality = df[feature].nunique()
         missed= 100 * df[feature].isnull().sum() / df.shape[0]
         feature_type = get_feature_type(df[feature])
-        return [feature_type,cardinality,missed]
+        return feature_type,cardinality,missed
     else:
-        return "","",""
-    
-#=====================#=====================#=====================#=====================
-# to find time columns 
-#=====================#=====================#=====================#=====================
+        return "","",""   
+
+def isNumeric(dtype):
+    return dtype in [np.int16, np.int32, np.int64, np.float16, np.float32, np.float64]
+
 def isTime(dtype):
+    """Checks if dtype is one of time formats"""
     if '[ns]' in str(dtype) or 'datetime' in str(dtype) :   
         return True
     return False
 
 def safe_convert(s):
+    """Tries to convert Series data to datetime if possible withought exception"""
     try:
         return pd.to_datetime(s, errors='ignore') 
     except:
-        a=0
+        pass
     return s

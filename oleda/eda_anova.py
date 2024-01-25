@@ -1,16 +1,23 @@
+"""Exploratory Data Analysis with python.
+
+Automatic report generation from a pandas DataFrame.
+Insights from data.
+
+Typical usage example:
+
+  oleda.pairwise_report(df1,df2)
+"""
 import warnings
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as pls 
 import scipy.stats as stats
+import matplotlib.pyplot as pls 
 
 import seaborn as sns
 from IPython.display import display, HTML
-
 import statsmodels.api as sm
 import statsmodels.stats.multicomp as mc
 from statsmodels.formula.api import ols
-
 
 warnings.filterwarnings("ignore")
 
@@ -19,7 +26,34 @@ warnings.filterwarnings("ignore")
 #=====================#=====================#=====================#=====================
 
 def anova_explore_dataset(df,target,max_card=200):
-    
+    """Fetches rows from a Smalltable.
+
+    Retrieves rows pertaining to the given keys from the Table instance
+    represented by table_handle.  String keys will be UTF-8 encoded.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        keys: A sequence of strings representing the key of each table
+          row to fetch.  String keys will be UTF-8 encoded.
+        require_all_keys: If True only rows with values set for all keys will be
+          returned.
+
+    Returns:
+        A dict mapping keys to the corresponding table row data
+        fetched. Each row is represented as a tuple of strings. For
+        example:
+
+        {b'Serak': ('Rigel VII', 'Preparer'),
+         b'Zim': ('Irk', 'Invader'),
+         b'Lrrr': ('Omicron Persei 8', 'Emperor')}
+
+        Returned keys are always bytes.  If a key from the keys argument is
+        missing from the dictionary, then that row was not found in the
+        table (and require_all_keys must have been False).
+
+    Raises:
+        IOError: An error occurred accessing the smalltable.
+    """    
     features = list(set(df.columns.to_list()))
     if target not in features:
         print("{} not in dataframe".format(target))
@@ -171,7 +205,34 @@ def turkeyHSD(df,feature,target):
 
 
 def anova(df,feature,target,verbose=True):
-    
+    """Fetches rows from a Smalltable.
+
+    Retrieves rows pertaining to the given keys from the Table instance
+    represented by table_handle.  String keys will be UTF-8 encoded.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        keys: A sequence of strings representing the key of each table
+          row to fetch.  String keys will be UTF-8 encoded.
+        require_all_keys: If True only rows with values set for all keys will be
+          returned.
+
+    Returns:
+        A dict mapping keys to the corresponding table row data
+        fetched. Each row is represented as a tuple of strings. For
+        example:
+
+        {b'Serak': ('Rigel VII', 'Preparer'),
+         b'Zim': ('Irk', 'Invader'),
+         b'Lrrr': ('Omicron Persei 8', 'Emperor')}
+
+        Returned keys are always bytes.  If a key from the keys argument is
+        missing from the dictionary, then that row was not found in the
+        table (and require_all_keys must have been False).
+
+    Raises:
+        IOError: An error occurred accessing the smalltable.
+    """    
     model = ols(target+' ~ C('+feature+')', data=df).fit()
     
     #Shapiro-Wilk test to check the normal distribution of residuals
@@ -194,7 +255,34 @@ def anova(df,feature,target,verbose=True):
 #=====================#=====================#=====================#=====================
 
 def two_way_anova(df,feature1,feature2,target):
-    
+    """Fetches rows from a Smalltable.
+
+    Retrieves rows pertaining to the given keys from the Table instance
+    represented by table_handle.  String keys will be UTF-8 encoded.
+
+    Args:
+        df  (DataFrame): pandas DataFrame
+        keys: A sequence of strings representing the key of each table
+          row to fetch.  String keys will be UTF-8 encoded.
+        require_all_keys: If True only rows with values set for all keys will be
+          returned.
+
+    Returns:
+        A dict mapping keys to the corresponding table row data
+        fetched. Each row is represented as a tuple of strings. For
+        example:
+
+        {b'Serak': ('Rigel VII', 'Preparer'),
+         b'Zim': ('Irk', 'Invader'),
+         b'Lrrr': ('Omicron Persei 8', 'Emperor')}
+
+        Returned keys are always bytes.  If a key from the keys argument is
+        missing from the dictionary, then that row was not found in the
+        table (and require_all_keys must have been False).
+
+    Raises:
+        IOError: An error occurred accessing the smalltable.
+    """    
     model = ols(target+' ~ C('+feature1+') + C('+feature2+') + C('+feature1+'):C('+feature2+')', data=df).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
     return anova_table
