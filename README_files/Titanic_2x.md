@@ -3,7 +3,7 @@
 import oleda
 import pandas as pd
 df=pd.read_csv('titanic.csv')
-oleda.eda.interactions2x(df,maxnbr=6)
+oleda.eda.interactions2x(df,maxcount=6)
 ```
 
 <hr>
