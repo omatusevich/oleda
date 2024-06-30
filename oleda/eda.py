@@ -49,10 +49,12 @@ def report(df,target=None,**kwarg):
     Keyword Args:
         dependency (bool): Set to True to plot dependency plots
         maxcount   (int) : Maximum number of features to display
+        maxshap    (int) : Maximum number of shapley values to display
         ignore     (list): List of features to ignore         
     """
 
     ignore=kwarg.get('ignore',[])
+    kwarg['maxshap']=kwarg.get('maxshap',df.shape[1])
     
     if (target!=None) and (target not in df.columns.to_list()):
         print("{} is not in dataframe - Ignore".format(target))
@@ -118,7 +120,8 @@ def plot_shaps(df, target, **kwarg):
         
     Keyword Args:
         dependency (bool): Set to True to plot dependency plots. 
-        maxcount   (int) : Maximum number of features to display.
+        maxshap    (int) : Maximum number of features to display.
+        maxcount   (int) : Maximum number of features to display (used if maxshap is not set)
         ignore     (list): List of features to ignore. 
         
     Returns:
@@ -127,7 +130,7 @@ def plot_shaps(df, target, **kwarg):
 
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
 
-    maxcount  = kwarg.get('maxcount',df.shape[1])
+    maxcount  = kwarg.get('maxshap', kwarg.get('maxcount',df.shape[1]))
     ignore    = kwarg.get('ignore',[])
     
     #doesn't work on time columns, remove id columns (all values are different), columns with all nulls     

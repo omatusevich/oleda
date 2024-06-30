@@ -26,33 +26,14 @@ warnings.filterwarnings("ignore")
 #=====================#=====================#=====================#=====================
 
 def anova_explore_dataset(df,target,max_card=200):
-    """Fetches rows from a Smalltable.
-
-    Retrieves rows pertaining to the given keys from the Table instance
-    represented by table_handle.  String keys will be UTF-8 encoded.
+    """Execute anova for all categorical features in dataset.
 
     Args:
         df  (DataFrame): pandas DataFrame
-        keys: A sequence of strings representing the key of each table
-          row to fetch.  String keys will be UTF-8 encoded.
-        require_all_keys: If True only rows with values set for all keys will be
-          returned.
+        target (string): target feature name
 
     Returns:
-        A dict mapping keys to the corresponding table row data
-        fetched. Each row is represented as a tuple of strings. For
-        example:
 
-        {b'Serak': ('Rigel VII', 'Preparer'),
-         b'Zim': ('Irk', 'Invader'),
-         b'Lrrr': ('Omicron Persei 8', 'Emperor')}
-
-        Returned keys are always bytes.  If a key from the keys argument is
-        missing from the dictionary, then that row was not found in the
-        table (and require_all_keys must have been False).
-
-    Raises:
-        IOError: An error occurred accessing the smalltable.
     """    
     features = list(set(df.columns.to_list()))
     if target not in features:
@@ -205,33 +186,18 @@ def turkeyHSD(df,feature,target):
 
 
 def anova(df,feature,target,verbose=True):
-    """Fetches rows from a Smalltable.
+    """Anova test with statsmodels.
 
-    Retrieves rows pertaining to the given keys from the Table instance
-    represented by table_handle.  String keys will be UTF-8 encoded.
+    Peforms Shapiro-Wilk test to check normality first. If it passes do Anova test.
 
     Args:
         df  (DataFrame): pandas DataFrame
-        keys: A sequence of strings representing the key of each table
-          row to fetch.  String keys will be UTF-8 encoded.
-        require_all_keys: If True only rows with values set for all keys will be
-          returned.
+        feature (string): Categorical feature name.
+        target  (string):  Numerical feature name .
 
     Returns:
-        A dict mapping keys to the corresponding table row data
-        fetched. Each row is represented as a tuple of strings. For
-        example:
+        categories that passes anova test.
 
-        {b'Serak': ('Rigel VII', 'Preparer'),
-         b'Zim': ('Irk', 'Invader'),
-         b'Lrrr': ('Omicron Persei 8', 'Emperor')}
-
-        Returned keys are always bytes.  If a key from the keys argument is
-        missing from the dictionary, then that row was not found in the
-        table (and require_all_keys must have been False).
-
-    Raises:
-        IOError: An error occurred accessing the smalltable.
     """    
     model = ols(target+' ~ C('+feature+')', data=df).fit()
     
@@ -255,34 +221,7 @@ def anova(df,feature,target,verbose=True):
 #=====================#=====================#=====================#=====================
 
 def two_way_anova(df,feature1,feature2,target):
-    """Fetches rows from a Smalltable.
-
-    Retrieves rows pertaining to the given keys from the Table instance
-    represented by table_handle.  String keys will be UTF-8 encoded.
-
-    Args:
-        df  (DataFrame): pandas DataFrame
-        keys: A sequence of strings representing the key of each table
-          row to fetch.  String keys will be UTF-8 encoded.
-        require_all_keys: If True only rows with values set for all keys will be
-          returned.
-
-    Returns:
-        A dict mapping keys to the corresponding table row data
-        fetched. Each row is represented as a tuple of strings. For
-        example:
-
-        {b'Serak': ('Rigel VII', 'Preparer'),
-         b'Zim': ('Irk', 'Invader'),
-         b'Lrrr': ('Omicron Persei 8', 'Emperor')}
-
-        Returned keys are always bytes.  If a key from the keys argument is
-        missing from the dictionary, then that row was not found in the
-        table (and require_all_keys must have been False).
-
-    Raises:
-        IOError: An error occurred accessing the smalltable.
-    """    
+    """Two way anova with statsmodel."""    
     model = ols(target+' ~ C('+feature1+') + C('+feature2+') + C('+feature1+'):C('+feature2+')', data=df).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
     return anova_table
@@ -305,6 +244,27 @@ def get_feature_info(df,feature):
         feature_type = get_feature_type(df[feature])
         return [feature_type,cardinality,missed]
     else:
-        return "","",""            
+        return "","",""      
+    
+def get_categorical(df,maxmissed=0.6,binary=True):
+    """Select features for cramer v plot  - categorical or binary,
+       features with too many different values are ignored
+    """    
+    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64','datetime64','m8[ns]'] 
+    
+    #keep columns with % of missed less then 60
+    categoricals = df.loc[:, df.isnull().mean() <= maxmissed].select_dtypes(exclude=numerics).columns.to_list()
+    
+    if binary:
+        #add binary columns
+        bool_cols = [col for col in df.select_dtypes(include=numerics).columns.to_list() if 
+                   df[col].dropna().value_counts().index.isin([0,1]).all()]
 
+        categoricals.extend(bool_cols)
+    
+    #drop columns with no variance and with too much variance (id etc) 
+    categoricals=[col for col in categoricals if 
+               df[col].dropna().nunique() >1 and df[col].nunique() < df.shape[0]/2]
+       
+    return categoricals
     
