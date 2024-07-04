@@ -132,7 +132,7 @@ def plot_shaps(df, target, **kwarg):
 
     maxcount  = kwarg.get('maxshap', kwarg.get('maxcount',df.shape[1]))
     ignore    = kwarg.get('ignore',[])
-    
+
     #doesn't work on time columns, remove id columns (all values are different), columns with all nulls     
     filterout=lambda f: (isTime(df[f].dtype) or df[f].isnull().values.all()\
                       or  (len(df[f].unique())>df.shape[0]/2.0 and str(df[f].dtype) not in numerics))
@@ -256,8 +256,8 @@ def plot_qcuts(df,feature,target,**kwarg):
     """Split a continuous variable into quantiles and plot statistics per quantile.
 
     This function splits a continuous variable into quantiles and plots the target mean 
-    and count for each quantile. If the qbins argument is not provided, the variable is 
-    split into 10 quantiles by default.
+    for each quantile. If the qbins argument is not provided, the variable is split into 
+    10 quantiles by default.
 
     Args:
         df  (DataFrame): Pandas DataFrame.
@@ -269,17 +269,15 @@ def plot_qcuts(df,feature,target,**kwarg):
         qbins   (list)  : List of specific quantile values. 
     """
     
-    figsize=kwarg.get('figsize',(8,4))
+    figsize=kwarg.get('figsize',(4,4))
     qbins=kwarg.get('qbins', [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
     
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
+    fig = pls.figure( figsize=figsize)
     pls.title(f'Histogram of {feature}'); 
-    ax1.set_xlabel(feature) 
-    ax1.set_ylabel('count')
-    ax2.set_xlabel(feature) 
-    ax2.set_ylabel(target)
-    df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target].count().plot(kind='bar',ax=ax1,grid=True)
-    df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target].mean( ).plot(kind='bar',ax=ax2,grid=True)
+    pls.xlabel(feature) 
+    pls.ylabel(target)
+
+    df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target].mean( ).plot(kind='bar',grid=True)
 
     pls.show()    
                       
@@ -526,7 +524,6 @@ def print_features_stats(df,target=None,sorted_features=None):
              explore_timecolumn(df,feature,target)
                 
 def explore_timecolumn(df,feature,target): 
-    
         info = pd.DataFrame(index=['dType :' ,'Min :', 'Max :'],columns=[' '])       
         info[' ']=[df[feature].dtype,df[feature].min(),df[feature].max()]
         print(info.head())
@@ -603,10 +600,14 @@ def explore_numerical(df,feature,target,maxcount=40):
         tg_cardinality= 0 if target is None else df[target].nunique() 
         cardinality=df[feature].nunique()
     
-        info = pd.DataFrame(
-        index=['dType :' ,'Min :', 'Max :', 'Mean :', 'Std :'],
-        columns=[' '])       
-        info[' ']=[df[feature].dtype,df[feature].min(),df[feature].max(),df[feature].mean(),df[feature].std() ]
+        info = pd.DataFrame(index=['dType :' ,'Min :', 'Max :', 'Mean :', 'Std :'],
+                                                                     columns=[' '])       
+        info[' ']=[df[feature].dtype,
+                   df[feature].min(),
+                   df[feature].max(),
+                   df[feature].mean(),
+                   df[feature].std() ]
+        
         print(info.head())
         print('\n ')
         

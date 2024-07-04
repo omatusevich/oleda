@@ -48,7 +48,6 @@ def pairwise_report(df1,df2,**kwarg):
 .
     """  
     target=kwarg.get('target',None)
-    full=kwarg.get('full',True)
     maxshap=kwarg.get('maxshap',max(df1.shape[1],df2.shape[1]))
     kwarg['maxshap']=maxshap
     maxcount=kwarg.get('maxcount',min(20,maxshap))
@@ -64,7 +63,7 @@ def pairwise_report(df1,df2,**kwarg):
     #print shap values for each frame predicting targed
     header('Shap values' )
      
-    if target==None:#compare datasets
+    if target is None:#compare datasets
         sorted_features=plot_shap_pairwise(df1,df2,**kwarg)
     else:           #compare acconding to target
         sorted_features1=plot_shap(df1,target,**kwarg)
@@ -74,30 +73,33 @@ def pairwise_report(df1,df2,**kwarg):
     sorted_features=sorted_features[:maxshap]
  
     # if dataframe has timedate index - plot time series
-    if target !=None and  df1.index.dtype==np.dtype('datetime64[ns]') and df2.index.dtype==np.dtype('datetime64[ns]'):
+    if (target !=None and df1.index.dtype==np.dtype('datetime64[ns]') 
+                     and df2.index.dtype==np.dtype('datetime64[ns]')):
         header('Time series') 
         #print frames records counts per day side by side
         pairwise_target_stat_per_day(df1,df2,target,method_name='count')
         
     #print each feature stat
-    header('Features info' )
+    header('Features info')
     print_features_pairwise(df1,df2,target,sorted_features,**kwarg)
        
-    if full:
+    if kwarg.get('full',True):
+        
+        figsize=kwarg.get('figsize',(6,6))
+        figsize2x1=(figsize[0]*2,figsize[1])
+        
         header('Missed values')
-        #plot missed vales
-        plot_na_pairwise(df1,df2)
+        plot_na_pairwise(df1,df2,figsize2x1)
         print('\n \n ')
         #print columns with % of missing values
         print_na_pairwise(df1,df2)
 
         #for numeric variables only
-        header('Pearson correlations' )     
+        header('Pearson correlations')     
         plot_correlations_pairwise(df1,df2,maxcount) 
 
         #correlations of categorical variables
-        header('Cramers V staticstics' )    
-        #third parameter max features to display
+        header('Cramers V staticstics')    
         plot_cramer_v_corr_pairwise(df1,df2,maxcount)  
         
 def _create_info_frame(df,feature):
@@ -105,7 +107,12 @@ def _create_info_frame(df,feature):
     info = pd.DataFrame(index=['Type :' ,'Distinct count :', 'Missed %:'], columns=[' '])
     info[' '] =[feature_type,cardinality,missed]
     if feature_type == 'Numeric':
-            info.loc['Mean :',' ']=df[feature].mean()
+          info.loc['Median :',' ']=df[feature].median()
+          info.loc['Mean :',' ']=df[feature].mean()
+          info.loc['dType :',' ']=df[feature].dtype
+          info.loc['Min :',' ']=df[feature].min()
+          info.loc['Max :',' ']=df[feature].max()
+          info.loc['Std :',' ']=df[feature].std() 
     return info
     
 def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
@@ -116,18 +123,21 @@ def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
     figsize2x1=(figsize[0]*2,figsize[1])
     maxcount=kwarg.get('maxcount',20)
     
-    features = sorted_features if sorted_features is not None else list(set(df1.columns.to_list())&set(df2.columns.to_list()))
+    features = sorted_features if sorted_features is not None else list(set(df1.columns.to_list())
+                                                                       &set(df2.columns.to_list()))
     for feature in features:
         if feature==target:
             continue           
         print('\n ')
         header(feature,sz='h3')
-        display_side_by_side([_create_info_frame(df1,feature).head(),
-                              _create_info_frame(df2,feature).head()],['Frame 1','Frame 2'])
+        display_side_by_side([_create_info_frame(df1,feature),
+                              _create_info_frame(df2,feature)],['Frame 1','Frame 2'])
         print('\n ') 
         feature_type,cardinality,missed = get_feature_info(df1,feature)
-        noempty1=(df1[feature].nunique()>0)
-        noempty2=(df2[feature].nunique()>0)
+        cardinality2=df2[feature].nunique()
+        noempty1=(cardinality>0)
+        noempty2=(cardinality2)
+        cardinality=max(cardinality,cardinality2)
         
         if (feature_type =='Categorical' or feature_type=='Boolean' or 
             cardinality <= maxcount ):
@@ -156,10 +166,10 @@ def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
         elif feature_type =='Numeric':
             pairwise_density_plot(df1,df2,feature,figsize=figsize2x1)
 
-            fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize2x1)#(16, 5))
-            if noempty1: sns.boxplot(df1[feature].reset_index(),color='blue',orient='h',ax=ax1)                
-            if noempty2: sns.boxplot(df2[feature].reset_index(),color='blue',orient='h',ax=ax2)
-            pls.show()
+            #fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize2x1)#(16, 5))
+            #if noempty1: sns.boxplot(df1.reset_index()[feature],color='blue',orient='h',ax=ax1)                
+            #if noempty2: sns.boxplot(df2.reset_index()[feature],color='blue',orient='h',ax=ax2)
+            #pls.show()
 
             if  target !=None:
                 pairwise_scatter_plot(df1,df2,feature,target)
@@ -170,12 +180,7 @@ def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
                     
         else:
             print("Time column - skip  ")
-    
-
-#=====================#=====================#=====================#=====================
-# shap 
-#=====================#=====================#=====================#=====================
-       
+           
 def plot_shap_pairwise(df1, df2,**kwarg):
     """ 
     Add an indicator variable to each dataset to distinguish them, and then concatenate both datasets. 
@@ -191,21 +196,21 @@ def plot_shap_pairwise(df1, df2,**kwarg):
 
     return plot_shaps(x,target,**kwarg)
 
-def plot_cramer_v_corr_pairwise(df1,df2,max_features=20):
-    fig, ax = pls.subplots(nrows=1,ncols=2,figsize=(40,20))
+def plot_cramer_v_corr_pairwise(df1,df2,maxcount=20,figsize=(40,20)):
+    fig, ax = pls.subplots(nrows=1,ncols=2,figsize=figsize)
     plot_cramer_v_corr(df1,maxcount=10,ax=ax[0])
     plot_cramer_v_corr(df2,maxcount=10,ax=ax[1]) 
     pls.show()
     
-def plot_correlations_pairwise(df1,df2,maxnbr=20):
+def plot_correlations_pairwise(df1,df2,maxcount=20,figsize=(40,20)):
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
     l1=df1.select_dtypes(include=numerics).columns.to_list()
     l2=df2.select_dtypes(include=numerics).columns.to_list()
     if len(l1)>=2 or len(l2)>=2:
-        fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=(40,20))
-        sns.heatmap(df1[l1[:maxnbr]].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax1)
+        fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize)
+        sns.heatmap(df1[l1[:maxcount]].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax1)
         ax1.set_title('Correlation Heatmap')
-        sns.heatmap(df2[l2[:maxnbr]].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax2)
+        sns.heatmap(df2[l2[:maxcount]].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax2)
         ax2.set_title('Correlation Heatmap')   
         pls.show()
     else:
@@ -216,9 +221,9 @@ def print_na_pairwise(df1,df2,max_row=60):
                           missing_values_table(df2).head(max_row)],
                          ['Frame 1 ','Frame 2'])
     
-def plot_na_pairwise(df1,df2):
+def plot_na_pairwise(df1,df2,figsize=(18,6)):
     pls.style.use('seaborn-talk')
-    fig = pls.figure(figsize=(18,6))
+    fig = pls.figure(figsize=figsize)
     miss_1 = pd.DataFrame((df1.isnull().sum())*100/df1.shape[0]).reset_index()
     miss_2 = pd.DataFrame((df2.isnull().sum())*100/df2.shape[0]).reset_index()
     miss_1["type"] = "first"
@@ -272,12 +277,8 @@ def pairwise_scatter_plot(df1,df2,feature,target, figsize=(12,6)):
         ax2.scatter(df2[feature], df2[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
     pls.show()     
 
-#=====================#=====================#=====================#=====================
-# categorical 
-#=====================#=====================#=====================#=====================
-
 def plot_pairwise_barplot(df1,df2,feature,**kwarg):
-    """Plots pairwise feature statistics.
+    """Plots pairwise feature barplot.
     """
     maxcount=kwarg.get('maxcount',20)
     temp = df1[feature].value_counts()
@@ -315,9 +316,6 @@ def plot_pairwise_stats(df1,df2,feature,target,**kwarg):
 
     pls.show();
 
-#=====================#=====================#=====================
-# time series plots
-#=====================#=====================#=====================
 def pairwise_target_stat_per_day(df1,df2,target, **kwarg ):
     """Plots n top feature values counts per day   
 
@@ -368,9 +366,6 @@ def display_side_by_side(dfs:list, captions:list)->None:
         output += "\xa0\xa0\xa0"
         
     display(HTML(output))
-
-#for compatibility
-print_report = pairwise_report  
 
 
        
