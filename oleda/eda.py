@@ -277,7 +277,8 @@ def plot_qcuts(df,feature,target,**kwarg):
     pls.xlabel(feature) 
     pls.ylabel(target)
 
-    df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target].mean( ).plot(kind='bar',grid=True)
+    sub=df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target]
+    getattr(sub,kwarg.get('method_name','mean'))().plot(kind='bar',grid=True)
 
     pls.show()    
                       
