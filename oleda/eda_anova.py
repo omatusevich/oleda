@@ -11,7 +11,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import matplotlib.pyplot as pls 
+import matplotlib.pyplot as pls
 
 import seaborn as sns
 from IPython.display import display, HTML
@@ -19,7 +19,7 @@ import statsmodels.api as sm
 import statsmodels.stats.multicomp as mc
 from statsmodels.formula.api import ols
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
 #=====================#=====================#=====================#=====================
 # explore datasets categorical variables
@@ -34,36 +34,41 @@ def anova_explore_dataset(df,target,max_card=200):
 
     Returns:
 
-    """    
+    """
     features = list(set(df.columns.to_list()))
     if target not in features:
-        print("{} not in dataframe".format(target))
+        print(f'{target} not in dataframe')
         return
-    
-    
+
     for feature in features:
-                                                                   
+
         if feature==target:
-            continue                                                                  
-                                                                   
-        feature_type,cardinality,missed = get_feature_info(df,feature)
-        
-        if (feature_type=='Categorical' and cardinality<max_card and cardinality>1 and cardinality< df.shape[0]/2.0 ) or feature_type=='Boolean':
-            
-            display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
-            
-            if(anova(df[[feature,target]].dropna(),feature,target)):
-                
+            continue
+
+        feature_type,cardinality,_ = get_feature_info(df,feature)
+
+        if (feature_type=='Categorical'
+            and cardinality<max_card
+            and cardinality>1
+            and cardinality< df.shape[0]/2.0 ) or feature_type=='Boolean':
+
+            display(HTML(f'<h3 align=\'center\'>{ feature}</h3>'))
+
+            if anova(df[[feature,target]].dropna(),feature,target):
+
                 # Tukey HSD test
                 # target mean on feature values
                 comp = mc.MultiComparison(df[target],df[feature].fillna('MISSED'))
                 post_hoc_res = comp.tukeyhsd()
                 results_as_html =post_hoc_res.summary().as_html()
                 results_as_pandas = pd.read_html(results_as_html, header=0, index_col=0)[0]
-                print( results_as_pandas[results_as_pandas.reject].sort_values('meandiff',ascending=False) if results_as_pandas.shape[0]>0 and results_as_pandas[results_as_pandas.reject].shape[0]>0 else results_as_pandas  )              
+                print( results_as_pandas[results_as_pandas.reject].sort_values('meandiff',ascending=False)
+                      if results_as_pandas.shape[0]>0 and
+                      results_as_pandas[results_as_pandas.reject].shape[0]>0
+                      else results_as_pandas  )
 
 #=====================#=====================#=====================#=====================
-# compare datasets 
+# compare datasets
 #=====================#=====================#=====================#=====================
 
 def anova_compare_datasets(df1,df2,target,max_card=200):
@@ -71,19 +76,19 @@ def anova_compare_datasets(df1,df2,target,max_card=200):
     df2['flag176542']=2
     df=pd.concat([df1,df2])
     _compare_datasets(df,'flag176542',target,max_card)
-    
+
 def _compare_datasets(df,flag,target,max_card=200):
-    
+
     model = ols(target+' ~ C('+flag+')', data=df).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
     print(anova_table)
     print('Anova ' ,anova_table['PR(>F)'].iloc[0], 'OK' if anova_table['PR(>F)'].iloc[0] <0.05 else 'KO')
-    
+
     #Shapiro-Wilk test to check the normal distribution of residuals
     w, pvalue = stats.shapiro(model.resid)
     print('\nShapiro-Wilk test  normal distribution of residuals .  ', 'OK' if (pvalue <0.05) else 'KO' )
     print(w, pvalue)
-    
+
     # Bartlett’s test to check the Homogeneity of variances
     w, pvalue = stats.bartlett(df[df[flag]==0][target],df[df[flag]==1][target])
     print('\nBartlett’s test', 'OK' if pvalue <0.05 else 'KO')
@@ -91,35 +96,35 @@ def _compare_datasets(df,flag,target,max_card=200):
 
     # stats f_oneway functions takes the groups as input and returns F and P-value
     #fvalue, pvalue = stats.f_oneway(df[df[flag]==0][target],df[df[flag]==1][target] )
-    
+
     #print('Anova ' ,fvalue, pvalue, 'OK' if pvalue <0.05 else 'KO')
-    if (anova_table['PR(>F)'].iloc[0]>0.05):
+    if anova_table['PR(>F)'].iloc[0]>0.05:
         return
-    
-    sns.boxplot(x=flag, y=target, hue=flag, data=df, palette="Set3") 
+
+    sns.boxplot(x=flag, y=target, hue=flag, data=df, palette='Set3')
     pls.show()
-    
+
     features = list(set(df.columns.to_list()))
 
     for feature in features:
-                                                                   
+
         if feature==target:
-            continue                                                                  
-                                                                   
-        feature_type,cardinality,missed = get_feature_info(df,feature)
-        
+            continue
+
+        feature_type,cardinality,_ = get_feature_info(df,feature)
+
         if (feature_type=='Categorical' and cardinality<max_card) or feature_type=='Boolean':
-            display(HTML("<h3 align=\"center\">{}</h3>".format(feature)))
-            res=_compare_datasets_by_feature_anova(df,flag,feature,target,False)     
+            display(HTML(f'<h3 align=\'center\'>{feature}</h3>'))
+            res=_compare_datasets_by_feature_anova(df,flag,feature,target,False)
             if res.shape[0]>1:
                 print('Anova test:')
                 print(res,'\n\n')
 
 def _compare_datasets_by_feature(df,flag,feature,target):
-    
+
     resus=pd.DataFrame()
     for f in df[feature].unique():
-        
+
         try:
             res = turkeyHSD(df[df[feature]==f],flag,target)
         except:
@@ -128,10 +133,11 @@ def _compare_datasets_by_feature(df,flag,feature,target):
             if res.shape[0]>0:
                 res[feature]=f
                 resus=pd.concat([resus,res])
-    return  resus[resus.reject].sort_values('meandiff',ascending=False) if resus.shape[0]>0 and resus[resus.reject].shape[0]>0 else resus
+    return  (resus[resus.reject].sort_values('meandiff',ascending=False)
+             if resus.shape[0]>0 and resus[resus.reject].shape[0]>0 else resus)
 
 def _compare_datasets_by_feature_anova(df,flag,feature,target,verbose=True):
-    resus=pd.DataFrame()
+
     d=[]
     v1=[]
     v2=[]
@@ -143,26 +149,26 @@ def _compare_datasets_by_feature_anova(df,flag,feature,target,verbose=True):
         #fvalue, pvalue = stats.f_oneway(a,b )
         try:
             model = ols(target+' ~ C('+flag+')', data=df[df[feature]==f]).fit()
-            anova_table = sm.stats.anova_lm(model, typ=2) 
+            anova_table = sm.stats.anova_lm(model, typ=2)
             if verbose:
                 print(f,' anova PR(>F) ',anova_table['PR(>F)'].iloc[0])
         except:
             a=6
             if verbose:
-                print (f," Failed")
+                print (f,' Failed')
         else:
             if anova_table['PR(>F)'].iloc[0]>0.05:
                 continue
 
-            w, pvalue = stats.bartlett(a,b)
-            
+            _, pvalue = stats.bartlett(a,b)
+
             if pvalue>0.05:
                 continue
 
             d.append(f)
             p.append(anova_table['PR(>F)'].iloc[0])
             v1.append(a.mean())
-            v2.append(b.mean())  
+            v2.append(b.mean())
 
     res=pd.DataFrame({'feature':d,'1':v1,'2':v2,'pvalue':p})
 
@@ -182,7 +188,10 @@ def turkeyHSD(df,feature,target):
     post_hoc_res = comp.tukeyhsd()
     results_as_html =post_hoc_res.summary().as_html()
     results_as_pandas = pd.read_html(results_as_html, header=0, index_col=0)[0]
-    return results_as_pandas[results_as_pandas.reject].sort_values('meandiff',ascending=False) if results_as_pandas.shape[0]>0 and results_as_pandas[results_as_pandas.reject].shape[0]>0 else results_as_pandas
+    return (results_as_pandas[results_as_pandas.reject].sort_values('meandiff',ascending=False)
+            if results_as_pandas.shape[0]>0 and
+            results_as_pandas[results_as_pandas.reject].shape[0]>0
+            else results_as_pandas)
 
 
 def anova(df,feature,target,verbose=True):
@@ -198,30 +207,30 @@ def anova(df,feature,target,verbose=True):
     Returns:
         categories that passes anova test.
 
-    """    
+    """
     model = ols(target+' ~ C('+feature+')', data=df).fit()
-    
+
     #Shapiro-Wilk test to check the normal distribution of residuals
     w, pvalue = stats.shapiro(model.resid)
-    if (verbose):
+    if verbose:
         print('\nShapiro-Wilk test - normal distribution of residuals . ', 'OK' if (pvalue <0.05) else 'KO' )
         print(w, pvalue)
-    if (pvalue>0.05):
+    if pvalue>0.05:
         return False
-    
+
     anova_table = sm.stats.anova_lm(model, typ=2)
-    if (verbose):
+    if verbose:
         print(anova_table)
         print('Anova ' ,anova_table['PR(>F)'].iloc[0], 'OK' if anova_table['PR(>F)'].iloc[0] <0.05 else 'KO')
-        
-    return (anova_table['PR(>F)'].iloc[0]<0.05)
+
+    return anova_table['PR(>F)'].iloc[0]<0.05
 
 #=====================#=====================#=====================#=====================
 # two way anova
 #=====================#=====================#=====================#=====================
 
 def two_way_anova(df,feature1,feature2,target):
-    """Two way anova with statsmodel."""    
+    """Two way anova with statsmodel."""
     model = ols(target+' ~ C('+feature1+') + C('+feature2+') + C('+feature1+'):C('+feature2+')', data=df).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
     return anova_table
@@ -235,8 +244,8 @@ def get_feature_type(s):
     elif s.dtype in [np.bool] or len(set(s.dropna().unique()) - set([False,True]))==0:
         return 'Boolean'
     else:
-        return 'Categorical' 
-    
+        return 'Categorical'
+
 def get_feature_info(df,feature):
     if feature in df.columns:
         cardinality = df[feature].nunique()
@@ -244,27 +253,26 @@ def get_feature_info(df,feature):
         feature_type = get_feature_type(df[feature])
         return [feature_type,cardinality,missed]
     else:
-        return "","",""      
-    
+        return '','',''
+
 def get_categorical(df,maxmissed=0.6,binary=True):
     """Select features for cramer v plot  - categorical or binary,
        features with too many different values are ignored
-    """    
-    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64','datetime64','m8[ns]'] 
-    
+    """
+    numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64','datetime64','m8[ns]']
+
     #keep columns with % of missed less then 60
     categoricals = df.loc[:, df.isnull().mean() <= maxmissed].select_dtypes(exclude=numerics).columns.to_list()
-    
+
     if binary:
         #add binary columns
-        bool_cols = [col for col in df.select_dtypes(include=numerics).columns.to_list() if 
+        bool_cols = [col for col in df.select_dtypes(include=numerics).columns.to_list() if
                    df[col].dropna().value_counts().index.isin([0,1]).all()]
 
         categoricals.extend(bool_cols)
-    
-    #drop columns with no variance and with too much variance (id etc) 
-    categoricals=[col for col in categoricals if 
+
+    #drop columns with no variance and with too much variance (id etc)
+    categoricals=[col for col in categoricals if
                df[col].dropna().nunique() >1 and df[col].nunique() < df.shape[0]/2]
-       
+
     return categoricals
-    
