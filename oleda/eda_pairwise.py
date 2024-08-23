@@ -105,10 +105,10 @@ def _create_info_frame(df,feature):
     info[' '] =[feature_type,cardinality,missed]
     if feature_type == 'Numeric':
         info.loc['Median :',' ']=df[feature].median()
-        info.loc['Mean :',' ']=df[feature].mean()
+        #info.loc['Mean :',' ']=df[feature].mean()
         info.loc['dType :',' ']=df[feature].dtype
-        info.loc['Min :',' ']=df[feature].min()
-        info.loc['Max :',' ']=df[feature].max()
+        #info.loc['Min :',' ']=df[feature].min()
+        #info.loc['Max :',' ']=df[feature].max()
         info.loc['Std :',' ']=df[feature].std()
     return info
 

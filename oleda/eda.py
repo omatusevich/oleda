@@ -8,6 +8,10 @@
          oleda.report(df)
 """
 import warnings
+
+warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
+warnings.filterwarnings('ignore')
+
 import itertools
 import numpy as np
 import pandas as pd
@@ -21,7 +25,6 @@ from lightgbm import LGBMClassifier,LGBMRegressor
 
 from .eda_anova import anova,two_way_anova,turkeyHSD
 
-warnings.filterwarnings('ignore')
 
 #=====================#=====================#=====================
 # single dataset  eda
@@ -732,7 +735,7 @@ def one_to_many(df,fiterout=True):
 def tryanova( sub ,feature ,target ,maxcount ):
     try:
         #check variance
-        if anova(sub,feature,target ,False):
+        if anova(sub[[feature,target]].dropna(),feature,target ,False):
             header(feature+' - '+ target,sz='h3')
             fig, ax = pls.subplots(figsize=(14 if maxcount>6 else 8, 8))
             sns.barplot(x=feature, y=target, data=sub, ax=ax)
@@ -801,13 +804,6 @@ def interactions2x(ddf,**kwarg):
     cuts=kwarg.get('cuts',False)
     maxcount=kwarg.get('maxcount',6)
 
-    with pd.option_context('mode.use_inf_as_na', True):
-        if df.isnull().values.any():
-            print('Warning: dataframe contains nan or inf ,'
-                  ' please fix or drop them to obtain better results. \n')
-            df[numeric]=df[numeric].fillna(0)
-            df[categorical]=df[categorical].fillna('missed')
-
     fanova={}
     for f  in features:
         depended=[]
@@ -843,7 +839,51 @@ def interactions2x(ddf,**kwarg):
 
     return fanova
 
-def interactions3x(ddf,**kwarg):
+def check_dependency3x(df,feature1,feature2,target,**kwarg):
+    
+    maxcount=kwarg.get('maxcount',6)
+    verbose=kwarg.get('verbose',False)
+
+    sub=df[df[feature1].isin(df[feature1].value_counts().iloc[:maxcount].index)]
+    
+    sub[feature1+feature2]=sub[feature1].astype(str)+sub[feature2].astype(str)
+    top=sub[[feature1,feature2,feature1+feature2]].dropna()[feature2].value_counts().iloc[:maxcount].index
+    sub=sub[sub[feature2].isin(top)]
+    
+    anova_res=False
+    try:
+
+        res=two_way_anova(sub.dropna(),feature1,feature2,target)
+        header(target,sz='h5')
+        if verbose:
+            print(res)
+
+        if res.iloc[2]['PR(>F)']<=0.05:
+            anova_res=True
+            print('Anova passed')
+            print('turkeyHSD')
+            print(turkeyHSD(sub,feature1+feature2,target))
+        else:
+            print('Anova faled to reject => no difference ')
+
+    except Exception as e:
+        print('nan',e)
+        pass  
+    
+    if anova_res or verbose:
+        print(feature1+'*'+feature2+'='+target)
+        fig, ax = pls.subplots(figsize=(14, 8)  if maxcount>6 else (8, 6))
+        sns.barplot(x=feature1, y=target, hue=feature2, data=sub,ax=ax)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+        pls.show()
+        
+    if anova_res: 
+        sns.catplot(x=target, y=feature1, row=feature2, kind='box', orient='h', height=1.5, aspect=4,data=sub)
+        pls.show()
+
+    return anova_res
+    
+def interactions3x(df,**kwarg):
     """ 3nd order interactions plots.
 
     Check categorical varibles and binned numerical against the numerical varibles by
@@ -853,117 +893,58 @@ def interactions3x(ddf,**kwarg):
         df  (DataFrame): pandas DataFrame
     Keyword Args:
         features  (list) : indepepended variables list
-        target    (list) : continues depended variables list
+        targets   (list) : continues depended variables list
         maxcount   (int) : maximum number of features to display
         verbose   (bool) : detailed output or short
     Returns:
         depended features dictionary
-
-    """
-    df=ddf.copy()
+    """    
     categorical= get_categorical(df,maxmissed=0.9,binary=True)
     numeric= [ c for c in df.columns if is_numeric(df[c].dtype)]
+ 
+    targets=set(kwarg.get('targets',numeric))&set(numeric)
+    features=kwarg.get('features',df.columns.to_list())
 
-    target=set(kwarg.get('target',numeric))&set(numeric)
-    features=kwarg.get('features',None)
-    verbose=kwarg.get('verbose',False)
-    maxcount=kwarg.get('maxcount',6)
+    categorical= set(categorical)&set(features)
+    numeric= set(numeric)&set(features)
 
-    with pd.option_context('mode.use_inf_as_na', True):
-        if df.isnull().values.any():
-            print('Warning: dataframe contains nan or inf ,'
-                  ' please fix or drop them to obtain better results. \n')
-            df[numeric]=df[numeric].fillna(0)
-            df[categorical]=df[categorical].fillna('missed')
-
-    if features is not None:
-        categorical= set(categorical)&set(features)
-        numeric= set(numeric)&set(features)
-
-    features=list(categorical)
-    fanova={}
-
-    for f in numeric:
-        cardinality=df[f].nunique()
-        if cardinality < df.shape[0]/2.0 and cardinality>=2 and cardinality < 40:
-            features.append(f)
-            continue
-        else:
-            q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 , 1]
-            df['cuts__'+f]=pd.qcut(df[f], q=q, duplicates='drop')
-            df['cuts__'+f]=df['cuts__'+f].astype(str)
-            features.append('cuts__'+f)
-
-    if  len(features)<1 or len(target)<1:
+    if  len(features)<1 or len(targets)<1:
         return None
+    
+    fdf=df[features]
+    if len(numeric):
+        fdf=fdf.copy()
+        for feature in numeric:
+            if fdf[feature].nunique()>min( fdf[feature].shape[0]/2.0, 40):
+                q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 , 1]
+                fdf[feature]=pd.qcut(fdf[feature], q=q, duplicates='drop').astype(str)   
+            fdf[feature]=fdf[feature].astype(str)
 
+    fanova={}    
 
     for i in range(len(features)-1):
-        f1=features[i]
         for j in range(i+1,len(features)):
-            sub1=df[df[f1].isin(df[f1].value_counts().iloc[:maxcount].index)]
-            f2=features[j]
-
-            header(f1+' - '+ f2,sz='h3')
-
-            #one-to-one
-            if df.groupby(f1)[f2].apply(lambda x: x.nunique() <2 ).all():
+            header(features[i]+' - '+ features[j],sz='h3')
+            
+            #if (features[i] in categorical) and (features[j] in categorical):
+                #one-to-one
+            if df.groupby(features[i])[features[j]].apply(lambda x: x.nunique() <2 ).all():
                 print ('one-to-one skip')
                 continue
 
-            print('relation ',df.groupby(f1)[f2].nunique().max(),' : ',df.groupby(f2)[f1].nunique().max())
-            sub1[f1+f2]=sub1[f1].astype(str)+sub1[f2].astype(str)
-
-            top=sub1[[f1,f2,f1+f2]].dropna()[f2].value_counts().iloc[:maxcount].index
-            sub=sub1[sub1[f2].isin(top)]
-
-            depended=[]
-
-            for t in target:
-
-                if 'cuts__'+t in [f1, f2] or t in [f1,f2]:
+            print('relation ',df.groupby(features[i])[features[j]].
+                  nunique().max(),' : ',df.groupby(features[i])[features[j]].nunique().max())
+            depended=[]    
+            for target in targets:   
+                if target==features[i] or target==features[j]:
                     continue
-
-                print('\n\n',t)
-
-                try:
-
-                    res=two_way_anova(sub[[f1,f2,f1+f2,t]].dropna(),f1,f2,t)
-                    if verbose:
-                        print(res)
-
-                    if res.iloc[2]['PR(>F)']<=0.05:
-                        print('Anova passed')
-                        #print(f1,f2,t)
-                        depended.append(t)
-                        print('turkeyHSD')
-                        print(turkeyHSD(sub,f1+f2,t))
-                    else:
-                        print('Anova faled to reject => no difference ')
-
-                    if (res.iloc[2]['PR(>F)']<=0.05) or verbose:
-                        fig, ax = pls.subplots(figsize=(14, 8)  if maxcount>6 else (8, 6))
-                        sns.barplot(x=f1, y=t, hue=f2, data=sub,ax=ax)
-                        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
-                        pls.show()
-
-                except Exception as e:
-                    print('nan',e)
-                    pass
-
+                if check_dependency3x(pd.concat([fdf[[features[i],features[j]]],df[target]],axis=1),
+                                   features[i],features[j],target ,**kwarg):
+                    depended.append(target)
+                     
             if depended:
                 print(depended)
-                fanova[f1+' '+ f2]= depended.copy()
-
-            if depended:
-                if len(depended)>1:
-                    top=sub[[f1,f2,f1+f2]].dropna()[f1+f2].value_counts().index[:maxcount]
-                    sns.pairplot(sub[sub[f1+f2].isin(top)],vars=depended,hue=f1+f2,corner=True)
-                    pls.show()
-                for t in depended:
-                    print(f1+'*'+f2+'='+t)
-                    sns.catplot(x=t, y=f1, row=f2, kind='box', orient='h', height=1.5, aspect=4,data=sub)
-                    pls.show()
+                fanova[features[i]+' '+ features[j]]= depended.copy()
 
     return fanova
 
