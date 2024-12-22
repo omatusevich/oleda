@@ -187,14 +187,12 @@ def plot_shaps(df, target, **kwarg):
     clf.fit(df[features], df[target])#,categorical_feature=categorical_features)
 
     shap_values = shap.TreeExplainer(clf.booster_).shap_values(df[features])
-    shap.summary_plot(shap_values, df[features], max_display=maxcount, auto_size_plot=True)
 
-    if binary_target:
-        vals= np.abs(shap_values).mean(0)
-    else:
-        vals= shap_values
+    shap.summary_plot(shap_values, df[features], max_display=maxcount)
 
-    feature_importance = pd.DataFrame(list(zip(df[features].columns, sum(vals))),
+    vals= shap_values
+
+    feature_importance = pd.DataFrame(list(zip(df[features].columns,sum(vals))),
                                       columns=['col_name','feature_importance_vals'])
     feature_importance.sort_values(by=['feature_importance_vals'], ascending=False,inplace=True)
     sorted_features=feature_importance['col_name'].to_list()
@@ -202,7 +200,7 @@ def plot_shaps(df, target, **kwarg):
     data=df.copy()
 
     if binary_target:
-        shap.summary_plot(shap_values[1][:,:maxcount], df[features[:maxcount]])
+        #shap.summary_plot(shap_values[:,:maxcount], df[features[:maxcount]])#, auto_size_plot=True)
 
         if kwarg.get('dependency',True):
 
@@ -215,7 +213,7 @@ def plot_shaps(df, target, **kwarg):
                 if name in categorical_features and df[name].astype(str).nunique()>100:
                     continue
                 fig, ax = pls.subplots(1,1,figsize=(20,10))
-                shap.dependence_plot(name, shap_values[1], data[features],
+                shap.dependence_plot(name, shap_values, data[features],
                                      display_features=df[features], interaction_index=None,ax=ax)
                 pls.show()
 
@@ -997,7 +995,7 @@ def plot_ntop_categorical_values(df,feature,target,**kwarg):
                                               ax=ax,
                                               grid=True,
                                               linewidth=linewidth,
-                                              title=f'{feature} {method_name} per day')
+                                              title=f'{target} {method_name} per {feature} per day')
         legend.append(values[i])
 
     if len(values) > 1:
@@ -1136,7 +1134,7 @@ def get_feature_type(s):
         return 'Numeric'
     elif is_time(s.dtype):
         return 'Time'
-    elif s.dtype in [np.bool] or len(set(s.dropna().unique()) - set([False,True]))==0:
+    elif s.dtype in [bool] or len(set(s.dropna().unique()) - set([False,True]))==0:
         return 'Boolean'
     else:
         return 'Categorical'

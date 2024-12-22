@@ -63,8 +63,8 @@ def pairwise_report(df1,df2,**kwarg):
     if target is None:#compare datasets
         sorted_features=plot_shap_pairwise(df1,df2,**kwarg)
     else:           #compare acconding to target
-        sorted_features1=plot_shap(df1,target,**kwarg)
-        sorted_features2=plot_shap(df2,target,**kwarg)
+        sorted_features1=plot_shaps(df1,**kwarg)
+        sorted_features2=plot_shaps(df2,**kwarg)
         sorted_features=sorted_features1 if len(sorted_features1)>len(sorted_features2) else sorted_features2
 
     sorted_features=sorted_features[:maxshap]
@@ -78,7 +78,7 @@ def pairwise_report(df1,df2,**kwarg):
 
     #print each feature stat
     header('Features info')
-    print_features_pairwise(df1,df2,target=target,sorted_features=sorted_features,**kwarg)
+    print_features_pairwise(df1,df2,sorted_features=sorted_features,**kwarg)
 
     if kwarg.get('full',True):
 
@@ -120,8 +120,9 @@ def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
     figsize2x1=(figsize[0]*2,figsize[1])
     maxcount=kwarg.get('maxcount',20)
 
-    features = sorted_features if sorted_features is not None else list(set(df1.columns.to_list())
-                                                                       &set(df2.columns.to_list()))
+    features = sorted_features if sorted_features is not None else list(set(df1.columns.to_list()) &set(df2.columns.to_list()))
+    features=set(features)&set(df1.columns.to_list())
+    features=list(features&set(df2.columns.to_list()))
     for feature in features:
         if feature==target:
             continue
@@ -219,7 +220,7 @@ def print_na_pairwise(df1,df2,max_row=60):
                          ['Frame 1 ','Frame 2'])
 
 def plot_na_pairwise(df1,df2,figsize=(18,6)):
-    pls.style.use('seaborn-talk')
+    #pls.style.use('seaborn-talk')
     fig = pls.figure(figsize=figsize)
     miss_1 = pd.DataFrame((df1.isnull().sum())*100/df1.shape[0]).reset_index()
     miss_2 = pd.DataFrame((df2.isnull().sum())*100/df2.shape[0]).reset_index()
