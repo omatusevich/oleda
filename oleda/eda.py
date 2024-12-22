@@ -187,23 +187,26 @@ def plot_shaps(df, target, **kwarg):
     clf.fit(df[features], df[target])#,categorical_feature=categorical_features)
 
     shap_values = shap.TreeExplainer(clf.booster_).shap_values(df[features])
-
-    shap.summary_plot(shap_values, df[features], max_display=maxcount)
+    if type(shap_values) is list:
+        shap_values=shap_values[1]
+        
+    shap.summary_plot(shap_values, df[features], max_display=maxcount)#, auto_size_plot=True
 
     vals= shap_values
 
-    feature_importance = pd.DataFrame(list(zip(df[features].columns,sum(vals))),
+    feature_importance = pd.DataFrame(list(zip(df[features].columns, sum(abs(vals)))),
                                       columns=['col_name','feature_importance_vals'])
     feature_importance.sort_values(by=['feature_importance_vals'], ascending=False,inplace=True)
     sorted_features=feature_importance['col_name'].to_list()
 
-    data=df.copy()
-
     if binary_target:
-        #shap.summary_plot(shap_values[:,:maxcount], df[features[:maxcount]])#, auto_size_plot=True)
+        
+        #shap.summary_plot(shap_values[:,:maxcount], df[features[:maxcount]])
 
-        if kwarg.get('dependency',True):
-
+        if kwarg.get('dependency',False):
+            
+            data=df.copy()#do not copy !!!
+            
             for f in categorical_features:
                 data[f]=  data[f].astype(object)
                 data[f]=pd.factorize(data[f])[0]
@@ -213,7 +216,7 @@ def plot_shaps(df, target, **kwarg):
                 if name in categorical_features and df[name].astype(str).nunique()>100:
                     continue
                 fig, ax = pls.subplots(1,1,figsize=(20,10))
-                shap.dependence_plot(name, shap_values, data[features],
+                shap.dependence_plot(name, shap_values[1], data[features],
                                      display_features=df[features], interaction_index=None,ax=ax)
                 pls.show()
 
