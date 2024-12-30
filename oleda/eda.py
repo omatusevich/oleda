@@ -169,7 +169,7 @@ def plot_shaps(df, target, **kwarg):
 
     parameters={              'n_estimators':100
                             , 'min_data_in_leaf' : 10
-                            , 'min_sum_hessian_in_leaf' : 10
+                            #, 'min_sum_hessian_in_leaf' : 10
                             , 'feature_fraction' : 0.9
                             , 'bagging_fraction' : 1
                             , 'bagging_freq' : 1

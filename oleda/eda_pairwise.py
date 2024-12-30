@@ -123,8 +123,9 @@ def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
     features = sorted_features if sorted_features is not None else list(set(df1.columns.to_list())
                                                                        &set(df2.columns.to_list()))
     
-    features=set(features)&set(df1.columns.to_list())
-    features=list(features&set(df2.columns.to_list()))
+ 
+    #features=set(features)&set(df1.columns.to_list())
+    #features=list(features&set(df2.columns.to_list()))
     
     for feature in features:
         if feature==target:
