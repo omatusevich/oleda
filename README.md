@@ -4,7 +4,7 @@
  Exploratory Data Analysis with python.
  
 - Automatic report generation from a pandas DataFrame.
-- Datasets comparision.
+- Dataset comparison.
 - Insights from data.
 
 
@@ -13,8 +13,19 @@ Installation
 ------------------
 to install oleda:
 ```bash
- sudo python3 setup.py install
+ pip install .
 ```
+
+Development / running the tests
+------------------
+```bash
+ pip install -r requirements-dev.txt
+ pytest
+```
+19 tests covering the statistical helpers (Cramer's V, missing-value tables, categorical
+selection) and end-to-end report generation on awkward frames - missing values, constant and
+single-category columns, datetime indices, all-NaN columns, very small frames.
+
 Examples/Usage
 --------
 
@@ -27,21 +38,21 @@ report contains:
 - missing values statistics
 - information on each feature relevant for the feature type
 - pearson correlation heatmap
-- [Cramers V staticstics](https://stackoverflow.com/a/46498792/5863503)
+- [Cramér's V statistics](https://stackoverflow.com/a/46498792/5863503)
 - pair plot for most correlated features
 - if dataframe index is valid datetime index, time series plots are added to the report
 
 see  [Titanic dataset report example](README_files/Titanic_report.md)
 
-2. dataset can be tested against an target variable (binary (0,1) or continues):  
+2. dataset can be tested against a target variable (binary (0,1) or continuous):  
 
 ```python
 oleda.report(df,target,ignore=[],nbrmax=20)
 ```
-in this case plots that show correlation with targed are added for each feature
-features are sorterted according to their impotantce by [shap](https://github.com/slundberg/shap)
-nbrmax number of most important features selected by shap to be explored
-features need to be ignored can be added in ignore list 
+in this case plots showing each feature's correlation with the target are added
+features are sorted by importance using [shap](https://github.com/slundberg/shap)
+`nbrmax` caps how many of the most important features are explored
+features to ignore can be listed in `ignore` 
 
 see  [Titanic dataset report example with 'Survived' target](README_files/Titanic_report_tg.md)
 
@@ -50,13 +61,13 @@ see  [Titanic dataset report example with 'Survived' target](README_files/Titani
 oleda.pairwise_report(df1,df2,ignore=[],nbrmax=20)
 ```
 
-first oleda find by shap most significant features that distinguish these datasets
-then prints their statistics side by side to show the difference
+oleda first uses SHAP to find the features that most distinguish the two datasets,
+then prints their statistics side by side
 
 see  [Titanic dataset pairwise report example](README_files/Titanic_report_pairwise.md)
 
 
-All examples can be found in [jupiter notebook ](https://nbviewer.jupyter.org/github/Banuba/oleda/blob/main/example/Titanic-oleda.ipynb)
+All examples can be found in [Jupyter notebook ](https://nbviewer.jupyter.org/github/Banuba/oleda/blob/main/example/Titanic-oleda.ipynb)
 
 <hr>
 
@@ -74,7 +85,7 @@ plots description:
 
 ![](README_files/output_2_10.png)
 
-- pair plot of 10 most correlated features, which significantly varies ( ANOVA ) on values of this categorecal feature, colored according to features values:
+- pair plot of the 10 most correlated features that vary significantly (ANOVA) across values of this categorical feature, colored according to features values:
 
 ![](README_files/output_2_19.png)
 
@@ -106,7 +117,7 @@ etc
 
 ![](README_files/output_2_74.png)
 
-5. Cramers V staticstics
+5. Cramér's V statistics
 
 ![](README_files/output_2_79.png)
 
