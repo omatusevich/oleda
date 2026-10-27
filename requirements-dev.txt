@@ -1,0 +1,5 @@
+# Development dependencies.
+# Pulls in the runtime requirements, then adds what is only needed to test the package.
+-r requirements.txt
+
+pytest==9.1.1

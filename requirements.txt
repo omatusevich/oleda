@@ -1,3 +1,8 @@
+# Pinned, reproducible DEVELOPMENT environment (pip freeze).
+# This is NOT the package's dependency list - setup.py declares those directly, with
+# lower bounds, so installing oleda does not force this exact environment on anyone.
+# For development: pip install -r requirements-dev.txt
+
 appnope==0.1.4
 asttokens==3.0.0
 cloudpickle==3.1.0
