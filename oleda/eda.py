@@ -9,13 +9,18 @@
 """
 import warnings
 
-warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
-warnings.filterwarnings('ignore')
+# Third-party plotting and modelling stacks (shap, lightgbm, seaborn, pandas) emit a steady
+# stream of deprecation noise that would otherwise drown the report output. Scoped to the two
+# categories that are purely informational - a blanket filterwarnings('ignore') also hid
+# RuntimeWarnings such as invalid values in a division, which are worth seeing.
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', message=".*The 'nopython' keyword.*")
 
 import itertools
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as pls
+import matplotlib.pyplot as plt
 
 import shap
 import seaborn as sns
@@ -85,9 +90,9 @@ def report(df,target=None,**kwarg):
         header('Time series' )
         ax=df[target].resample('1d').mean().plot(
             grid=True,x_compat=True,figsize=(20,4),linewidth=2.0,label=target)
-        pls.title(' {target} mean per day ')
-        pls.legend()
-        pls.show()
+        plt.title(' {target} mean per day ')
+        plt.legend()
+        plt.show()
 
     header('Features' )
     print_features_stats(df,target,sorted_features)
@@ -105,12 +110,20 @@ def report(df,target=None,**kwarg):
     f=get_top_correlated(df,th=0.099,maxcount=7)
     if (target is not None) and (target not in f):
         f.append(target)
-    g=sns.pairplot(df[f])
 
-    for ax in g.axes.flatten():
-        ax.set_xlabel(ax.get_xlabel(), rotation = 90)
-        ax.set_ylabel(ax.get_ylabel(), rotation = 0)
-        ax.yaxis.get_label().set_horizontalalignment('right')
+    # A pair plot needs at least two columns. get_top_correlated returns nothing when the frame
+    # has fewer than two numeric columns or no pair clears the correlation threshold - common on
+    # small or mostly-categorical frames - and seaborn then raises "No variables found for grid
+    # columns", taking down the whole report over an optional plot.
+    if len(f) < 2:
+        print('Not enough correlated numeric features to plot - skipped')
+    else:
+        g=sns.pairplot(df[f])
+
+        for ax in g.axes.flatten():
+            ax.set_xlabel(ax.get_xlabel(), rotation = 90)
+            ax.set_ylabel(ax.get_ylabel(), rotation = 0)
+            ax.yaxis.get_label().set_horizontalalignment('right')
 
 #=====================#=====================#=====================#
 # shap
@@ -148,7 +161,10 @@ def plot_shaps(df, target, **kwarg):
                          or  (len(df[f].unique())>df.shape[0]/2.0
                               and str(df[f].dtype) not in numerics))
 
-    features = [ f for f in df.columns if ~filterout(f) ]
+    # `not`, not `~`: ~True is -2 and ~False is -1, both truthy, so the bitwise
+    # form kept every column and this filter silently did nothing. Bitwise
+    # inversion on a bool is also removed in Python 3.16.
+    features = [ f for f in df.columns if not filterout(f) ]
     features.remove(target)
 
     features=list(set(features)-set(ignore))
@@ -215,10 +231,10 @@ def plot_shaps(df, target, **kwarg):
                 #continue
                 if name in categorical_features and df[name].astype(str).nunique()>100:
                     continue
-                fig, ax = pls.subplots(1,1,figsize=(20,10))
+                fig, ax = plt.subplots(1,1,figsize=(20,10))
                 shap.dependence_plot(name, shap_values[1], data[features],
                                      display_features=df[features], interaction_index=None,ax=ax)
-                pls.show()
+                plt.show()
 
     #restore type
     for c in categorical_features:
@@ -255,15 +271,15 @@ def plot_cuts(df,feature,target,**kwarg):
         bins=np.arange(df[feature].min(),df[feature].max(),
                        (df[feature].max()-df[feature].min())/(1+kwarg.get('nbins',10)))
 
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
-    pls.title(f'Histogram of {feature}')
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
+    plt.title(f'Histogram of {feature}')
     ax1.set_xlabel(feature)
     ax1.set_ylabel('count')
     ax2.set_xlabel(feature)
     ax2.set_ylabel(target)
     df.groupby(pd.cut(df[feature], bins=bins))[target].count().plot(kind='bar',ax=ax1,grid=True)
     df.groupby(pd.cut(df[feature], bins=bins))[target].mean( ).plot(kind='bar',ax=ax2,grid=True)
-    pls.show()
+    plt.show()
 
 def plot_qcuts(df,feature,target,**kwarg):
 
@@ -286,15 +302,17 @@ def plot_qcuts(df,feature,target,**kwarg):
     figsize=kwarg.get('figsize',(4,4))
     qbins=kwarg.get('qbins', [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
 
-    fig = pls.figure( figsize=figsize)
-    pls.title(f'Histogram of {feature}')
-    pls.xlabel(feature)
-    pls.ylabel(target)
+    fig = plt.figure( figsize=figsize)
+    plt.title(f'Histogram of {feature}')
+    plt.xlabel(feature)
+    plt.ylabel(target)
 
-    sub=df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'))[target]
+    # observed=False keeps empty quantile bins, the existing behaviour;
+    # pandas is changing this default to True.
+    sub=df.groupby(pd.qcut(df[feature], q=qbins,duplicates='drop'),observed=False)[target]
     getattr(sub,kwarg.get('method_name','mean'))().plot(kind='bar',grid=True)
 
-    pls.show()
+    plt.show()
 
 def plot_qcuts3x(df,feature1,feature2,target,**kwarg):
 
@@ -318,16 +336,18 @@ def plot_qcuts3x(df,feature1,feature2,target,**kwarg):
     figsize=kwarg.get('figsize',(14,8))
     qbins=kwarg.get('qbins', [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
 
-    fig = pls.figure( figsize=figsize)
+    fig = plt.figure( figsize=figsize)
     tmp=df[[feature1,feature2,target]].copy()
 
     tmp[feature1]=pd.qcut(tmp[feature1], q=qbins, duplicates='drop')
     tmp[feature2]=pd.qcut(tmp[feature2], q=qbins, duplicates='drop')
     tmp=tmp.sort_values([feature1,feature2])
     ax=sns.boxplot(x=feature1, y=target, hue=feature2, data=tmp)
+    # tick locations must be fixed before labels are set, or matplotlib warns
+    ax.set_xticks(ax.get_xticks())
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
 
-    pls.show()
+    plt.show()
 #=====================#=====================#=====================#=====================
 # categorical
 #=====================#=====================#=====================#=====================
@@ -362,22 +382,22 @@ def plot_stats(df,feature,target,**kwarg):
 
     size=kwarg.get('figsize',(12,6) if len(cat_count[:maxcount]) <=40 else (12,14))
     if ax is None:
-        fig, ax = pls.subplots(ncols=2, figsize=size)
+        fig, ax = plt.subplots(ncols=2, figsize=size)
 
     sns.set_color_codes('pastel')
     s = sns.barplot(ax=ax[0], x = feature, y='Count ',
                     order=cat_perc[feature][:maxcount],data=cat_perc[:maxcount])
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
+    s.tick_params(axis='x', labelrotation=90)
 
     s = sns.barplot(ax=ax[1], x = feature, y=target,
                     order=cat_perc[feature][:maxcount], data=cat_perc[:maxcount])
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
+    s.tick_params(axis='x', labelrotation=90)
 
-    pls.ylabel(target, fontsize=10)
-    pls.tick_params(axis='both', which='major', labelsize=10)
+    plt.ylabel(target, fontsize=10)
+    plt.tick_params(axis='both', which='major', labelsize=10)
 
     if kwarg.get('showfigure',True):
-        pls.show()
+        plt.show()
 
 def plot_melt(df,feature,target1,target2,**kwarg):
     """Plots two targets statistcs per feature value.
@@ -407,11 +427,11 @@ def plot_melt(df,feature,target1,target2,**kwarg):
     data_melted = pd.melt(cat_perc[[feature,target1,target2]], id_vars=feature,
                            var_name='source', value_name='value_numbers')
 
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=(12,6))
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12,6))
     sns.set_color_codes('pastel')
     s = sns.barplot(ax=ax1, x = feature, y='Count ',
                     order=cat_count[feature][:end],data=cat_count[:end])
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
+    s.tick_params(axis='x', labelrotation=90)
 
     s = sns.barplot(ax=ax2,
                     x = feature,
@@ -420,11 +440,11 @@ def plot_melt(df,feature,target1,target2,**kwarg):
                     order=data_melted[feature][:min(end,cat_count.shape[0])],
                     data=data_melted)
 
-    s.set_xticklabels(s.get_xticklabels(),rotation=90)
+    s.tick_params(axis='x', labelrotation=90)
 
-    pls.tick_params(axis='both', which='major', labelsize=10)
-    pls.legend(bbox_to_anchor=(2, 0))
-    pls.show()
+    plt.tick_params(axis='both', which='major', labelsize=10)
+    plt.legend(bbox_to_anchor=(2, 0))
+    plt.show()
 
 #==========================================#=====================#=====================
 # nan
@@ -439,15 +459,15 @@ def plot_na(df,** kwarg):
     Keyword Args:
         figsize (tuple): Size of the figure.
     """
-    #pls.style.use('seaborn-talk')
+    #plt.style.use('seaborn-talk')
     figsize=kwarg.get('figsize',(18,6))
-    fig = pls.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize)
     miss = pd.DataFrame((df.isnull().sum())*100/df.shape[0]).reset_index()
     ax = sns.pointplot(x='index',y=0,data=miss)
-    pls.xticks(rotation =90,fontsize =7)
-    pls.title('Missed data')
-    pls.ylabel(' %')
-    pls.xlabel('Features')
+    plt.xticks(rotation =90,fontsize =7)
+    plt.title('Missed data')
+    plt.ylabel(' %')
+    plt.xlabel('Features')
 
 def print_na(df, **kwarg):
     """Print the percentage of missing values for each column.
@@ -521,11 +541,11 @@ def plot_corr(df, **kwargs):
     v=min(len(features),maxcount,20)
     figsize=kwargs.get('figsize',(v,v))
 
-    fig, ax = pls.subplots(1,1,figsize=figsize)
+    fig, ax = plt.subplots(1,1,figsize=figsize)
     sns.heatmap( corr[corr.index.isin(features)][features_ext],
-                cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6)
-    pls.title('Correlation Heatmap')
-    pls.show()
+                cmap = plt.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6)
+    plt.title('Correlation Heatmap')
+    plt.show()
     return
 
 
@@ -599,14 +619,14 @@ def explore_categorical(df,feature,target,numeric,maxcount=30,maxtscount=4):
         if target is not None :
             plot_stats(df,feature,target,maxcount=maxcount)
         else:
-            fig,ax =  pls.subplots(1, 1,figsize=(9, 5))
+            fig,ax =  plt.subplots(1, 1,figsize=(9, 5))
             if cardinality>maxcount:
                 f=df[feature].value_counts()[:maxcount].index
                 df[df[feature].isin(f)][feature].hist()
             else:
                 df[feature].astype('str').hist()
-            pls.xticks(rotation='vertical')
-            pls.show()
+            plt.xticks(rotation='vertical')
+            plt.show()
 
         #count of records with feature=value per day
         if target is not None and  is_time(df.index.dtype) and df.index.nunique()>2:
@@ -619,7 +639,7 @@ def explore_categorical(df,feature,target,numeric,maxcount=30,maxtscount=4):
 
         if target is not None and tg_cardinality>2 and cardinality<maxcount :
             sns.catplot(y=feature,x=target,data=df, orient='h', kind='box')
-            pls.show()
+            plt.show()
 
     #partitioning
     if (len(numeric)>1) and (cardinality<maxcount) and (cardinality>1):
@@ -643,7 +663,7 @@ def explore_categorical(df,feature,target,numeric,maxcount=30,maxtscount=4):
                 depended=get_top_correlated(sub[depended])
                 if len(depended)>1:
                     sns.pairplot(sub,vars=depended,hue=feature,corner=True)
-                    pls.show()
+                    plt.show()
 
     df[feature]=df[feature].replace('Missed value',np.nan)
 
@@ -669,52 +689,52 @@ def explore_numerical(df,feature,target,maxcount=40):
         if target is not None :
             plot_stats(df,feature,target,maxcount=maxcount)
         else:
-            pls.hist(df[feature])
-            pls.show()
+            plt.hist(df[feature])
+            plt.show()
 
         if target  is not None and tg_cardinality>2 and cardinality>2 :
-            fig,ax =  pls.subplots(1, 1,figsize=(8, 5))
-            pls.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
+            fig,ax =  plt.subplots(1, 1,figsize=(8, 5))
+            plt.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
             ax.set_xlabel(feature)
             ax.set_ylabel(target)
-            pls.show()
+            plt.show()
 
         if target  is not None and tg_cardinality>2:
             sns.catplot(y=feature,x=target,data=df, orient='h', kind='box')
-            pls.show()
+            plt.show()
 
     else:
         #distribution
-        fig,ax = pls.subplots(1, 2,figsize=(16, 5))
-        sns.distplot(df[feature],kde=True,ax=ax[0])
+        fig,ax = plt.subplots(1, 2,figsize=(16, 5))
+        sns.histplot(df[feature],kde=True,ax=ax[0])
         ax[0].axvline(df[feature].mean(),color = 'k',linestyle='dashed',label='MEAN')
         ax[0].legend(loc='upper right')
         ax[0].set_title(f'Skewness = {df[feature].skew():.4f}')
         sns.boxplot(x=df[feature],color='blue',orient='h',ax=ax[1])
-        pls.show()
+        plt.show()
 
         if  target  is not None :
             if tg_cardinality < 10:
-                fig,ax = pls.subplots(1, 2,figsize=(16, 5))
+                fig,ax = plt.subplots(1, 2,figsize=(16, 5))
                 #ax[0].scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
                 #ax[0].set_xlabel(feature)
                 #ax[0].set_ylabel(target)
                 sns.kdeplot(data=df, x=feature, hue=target, multiple='stack' ,ax=ax[0])
                 sns.violinplot(x=target, y=feature, data=df, ax=ax[1], inner='quartile')
-                pls.show()
+                plt.show()
             else:
                 #continues - continues
                 plot_qcuts(df,feature,target)
                 q = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
                 df['cuts__'+feature]=pd.qcut(df[feature],q=q,duplicates='drop')
                 sns.catplot(x=target,y='cuts__'+feature,data=df, orient='h', kind='box')
-                pls.show()
+                plt.show()
                 del df['cuts__'+feature]
-                fig,ax = pls.subplots(1, 1,figsize=(8, 5))
-                pls.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
+                fig,ax = plt.subplots(1, 1,figsize=(8, 5))
+                plt.scatter(df[feature], df[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
                 ax.set_xlabel(feature)
                 ax.set_ylabel(target)
-                pls.show()
+                plt.show()
 
 def one_to_many(df,fiterout=True):
     """Prints the maximum count of feature value thats corresponds to on value of onother feature.
@@ -738,10 +758,12 @@ def tryanova( sub ,feature ,target ,maxcount ):
         #check variance
         if anova(sub[[feature,target]].dropna(),feature,target ,False):
             header(feature+' - '+ target,sz='h3')
-            fig, ax = pls.subplots(figsize=(14 if maxcount>6 else 8, 8))
+            fig, ax = plt.subplots(figsize=(14 if maxcount>6 else 8, 8))
             sns.barplot(x=feature, y=target, data=sub, ax=ax)
+            # tick locations must be fixed before labels are set, or matplotlib warns
+            ax.set_xticks(ax.get_xticks())
             ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
-            pls.show()
+            plt.show()
             turkey=turkeyHSD(sub,feature,target)
             if turkey.shape[0]:
                 print(f'turkeyHSD\n{turkey}\n\n')
@@ -826,16 +848,16 @@ def interactions2x(ddf,**kwarg):
                 corr=np.abs(df[depended].corr()[f])
                 corr=corr.sort_values()[-maxcount:].index.to_list()
                 sns.pairplot(df,vars=corr,corner=True)
-                pls.show()
+                plt.show()
             else:
                 sns.scatterplot(x=df[f],y=df[depended[0]])
-                pls.show()
+                plt.show()
         elif len(depended)>1:
             if len(depended)>maxcount:
                 depended=get_top_correlated(df[depended],maxcount=maxcount)
             topk=df[f].value_counts().iloc[:maxcount].index
             sns.pairplot(df[df[f].isin(topk)],vars=depended,hue=f,corner=True)
-            pls.show()
+            plt.show()
 
 
     return fanova
@@ -873,14 +895,16 @@ def check_dependency3x(df,feature1,feature2,target,**kwarg):
     
     if anova_res or verbose:
         print(feature1+'*'+feature2+'='+target)
-        fig, ax = pls.subplots(figsize=(14, 8)  if maxcount>6 else (8, 6))
+        fig, ax = plt.subplots(figsize=(14, 8)  if maxcount>6 else (8, 6))
         sns.barplot(x=feature1, y=target, hue=feature2, data=sub,ax=ax)
+        # tick locations must be fixed before labels are set, or matplotlib warns
+        ax.set_xticks(ax.get_xticks())
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
-        pls.show()
+        plt.show()
         
     if anova_res: 
         sns.catplot(x=target, y=feature1, row=feature2, kind='box', orient='h', height=1.5, aspect=4,data=sub)
-        pls.show()
+        plt.show()
 
     return anova_res
     
@@ -1005,8 +1029,8 @@ def plot_ntop_categorical_values(df,feature,target,**kwarg):
         ax.lines[1].set_linestyle(':')
 
     ax.lines[0].set_linestyle('--')
-    pls.legend(legend, bbox_to_anchor=(1.2, 0))
-    pls.show()
+    plt.legend(legend, bbox_to_anchor=(1.2, 0))
+    plt.show()
 
 
 #=====================#=====================#=====================#=====================
@@ -1085,7 +1109,7 @@ def plot_cramer_v_corr(df,**kwarg):
     figsize=kwarg.get('figsize',(10,10))
     ax=kwarg.get('ax',None)
 
-    fig, ax = pls.subplots(1,1,figsize=figsize) if ax is None else None,ax
+    fig, ax = plt.subplots(1,1,figsize=figsize) if ax is None else None,ax
 
     correlation_matrix = pd.DataFrame(
         np.zeros((len(categoricals), len(categoricals))),
@@ -1103,7 +1127,7 @@ def plot_cramer_v_corr(df,**kwarg):
     ax.set_title('Cramer V Correlation between Variables')
 
     if fig is not None:#local figure
-        pls.show()
+        plt.show()
 
 
 #=====================#=====================#=====================#=====================
@@ -1163,7 +1187,15 @@ def is_time(dtype):
 def safe_convert(s):
     """Tries to convert Series data to datetime if possible withought exception"""
     try:
-        return pd.to_datetime(s, errors='ignore')
-    except:
+        # errors='ignore' is deprecated and will raise in a future pandas; the except below
+        # already provides the "return the original on failure" behaviour it asked for.
+        #
+        # This is a SPECULATIVE parse - every object column is offered to it, most are not
+        # dates - so pandas' "could not infer format, falling back to dateutil" notice is
+        # expected here rather than actionable, and is silenced for this call only.
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='Could not infer format')
+            return pd.to_datetime(s)
+    except (ValueError, TypeError, OverflowError):
         pass
     return s

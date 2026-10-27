@@ -11,7 +11,7 @@ Typical usage example:
 """
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as pls
+import matplotlib.pyplot as plt
 import seaborn as sns
 from IPython.display import display, HTML
 
@@ -168,17 +168,17 @@ def print_features_pairwise(df1,df2,target=None,sorted_features=None,**kwarg):
         elif feature_type =='Numeric':
             pairwise_density_plot(df1,df2,feature,figsize=figsize2x1)
 
-            #fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize2x1)#(16, 5))
+            #fig,(ax1, ax2) = plt.subplots(ncols=2,figsize=figsize2x1)#(16, 5))
             #if noempty1: sns.boxplot(df1.reset_index()[feature],color='blue',orient='h',ax=ax1)
             #if noempty2: sns.boxplot(df2.reset_index()[feature],color='blue',orient='h',ax=ax2)
-            #pls.show()
+            #plt.show()
 
             if  target is not None:
                 pairwise_scatter_plot(df1,df2,feature,target)
-                fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize2x1)
+                fig,(ax1, ax2) = plt.subplots(ncols=2,figsize=figsize2x1)
                 if noempty1: sns.violinplot(x=target, y=feature, data=df1, ax=ax1, inner='quartile')
                 if noempty2: sns.violinplot(x=target, y=feature, data=df2, ax=ax2, inner='quartile')
-                pls.show()
+                plt.show()
 
         else:
             print('Time column - skip  ')
@@ -199,22 +199,22 @@ def plot_shap_pairwise(df1, df2,**kwarg):
     return plot_shaps(x,target,**kwarg)
 
 def plot_cramer_v_corr_pairwise(df1,df2,maxcount=20,figsize=(40,20)):
-    fig, ax = pls.subplots(nrows=1,ncols=2,figsize=figsize)
+    fig, ax = plt.subplots(nrows=1,ncols=2,figsize=figsize)
     plot_cramer_v_corr(df1,maxcount=maxcount,ax=ax[0])
     plot_cramer_v_corr(df2,maxcount=maxcount,ax=ax[1])
-    pls.show()
+    plt.show()
 
 def plot_correlations_pairwise(df1,df2,maxcount=20,figsize=(40,20)):
     numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
     l1=df1.select_dtypes(include=numerics).columns.to_list()
     l2=df2.select_dtypes(include=numerics).columns.to_list()
     if len(l1)>=2 or len(l2)>=2:
-        fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize)
-        sns.heatmap(df1[l1[:maxcount]].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax1)
+        fig,(ax1, ax2) = plt.subplots(ncols=2,figsize=figsize)
+        sns.heatmap(df1[l1[:maxcount]].corr(), cmap = plt.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax1)
         ax1.set_title('Correlation Heatmap')
-        sns.heatmap(df2[l2[:maxcount]].corr(), cmap = pls.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax2)
+        sns.heatmap(df2[l2[:maxcount]].corr(), cmap = plt.cm.RdYlBu_r, vmin = -0.25, annot = True, vmax = 0.6,ax=ax2)
         ax2.set_title('Correlation Heatmap')
-        pls.show()
+        plt.show()
     else:
         print('Less then 2 numeric columns - skip ')
 
@@ -224,22 +224,22 @@ def print_na_pairwise(df1,df2,max_row=60):
                          ['Frame 1 ','Frame 2'])
 
 def plot_na_pairwise(df1,df2,figsize=(18,6)):
-    #pls.style.use('seaborn-talk')
-    fig = pls.figure(figsize=figsize)
+    #plt.style.use('seaborn-talk')
+    fig = plt.figure(figsize=figsize)
     miss_1 = pd.DataFrame((df1.isnull().sum())*100/df1.shape[0]).reset_index()
     miss_2 = pd.DataFrame((df2.isnull().sum())*100/df2.shape[0]).reset_index()
     miss_1['type'] = 'first'
     miss_2['type'] = 'second'
     missing = pd.concat([miss_1,miss_2],axis=0)
     sns.pointplot(x='index',y=0,data=missing,hue='type')
-    pls.xticks(rotation =90,fontsize =7)
-    pls.title('Missed data')
-    pls.ylabel(' %')
-    pls.xlabel('Features')
-    pls.show()
+    plt.xticks(rotation =90,fontsize =7)
+    plt.title('Missed data')
+    plt.ylabel(' %')
+    plt.xlabel('Features')
+    plt.show()
 
 def pairwise_density_plot(df1,df2,feature, figsize=(12,6)):
-    fig,(ax1, ax2) = pls.subplots(ncols=2,figsize=figsize)
+    fig,(ax1, ax2) = plt.subplots(ncols=2,figsize=figsize)
     if  not df1[feature].isnull().values.all():
         sns.histplot(df1[feature], stat='density',ax=ax1,kde=True)
     ax1.axvline(df1[feature].mean(),color = 'k',linestyle='dashed',label='MEAN')
@@ -251,10 +251,10 @@ def pairwise_density_plot(df1,df2,feature, figsize=(12,6)):
     ax2.axvline(df2[feature].mean(),color = 'k',linestyle='dashed',label='MEAN')
     ax2.legend(loc='upper right')
     ax2.set_title('{} Skewness = {:.4f}'.format('Frame 2',df2[feature].skew()))
-    pls.show()
+    plt.show()
 
 def pairwise_hist_plot(df1,df2,feature,bins=30, figsize=(12,6)):
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
     if  not df1[feature].isnull().values.all():
         ax1.hist(df1[feature] , edgecolor = 'k', bins = bins)
     if  not df2[feature].isnull().values.all():
@@ -264,11 +264,11 @@ def pairwise_hist_plot(df1,df2,feature,bins=30, figsize=(12,6)):
     ax1.set_ylabel('Count')
     ax2.set_xlabel(feature)
     ax2.set_ylabel('Count')
-    pls.show()
+    plt.show()
 
 def pairwise_scatter_plot(df1,df2,feature,target, figsize=(12,6)):
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=figsize)
-    pls.title(f'Scatterplot of {feature}'.format)
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
+    plt.title(f'Scatterplot of {feature}'.format)
     ax1.set_xlabel(feature)
     ax1.set_ylabel(target)
     ax2.set_xlabel(feature)
@@ -277,7 +277,7 @@ def pairwise_scatter_plot(df1,df2,feature,target, figsize=(12,6)):
         ax1.scatter(df1[feature], df1[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
     if  not df2[feature].isnull().values.all():
         ax2.scatter(df2[feature], df2[target], marker='.', alpha=0.7, s=30, lw=0,  edgecolor='k')
-    pls.show()
+    plt.show()
 
 def plot_pairwise_barplot(df1,df2,feature,**kwarg):
     """Plots pairwise feature barplot.
@@ -289,26 +289,26 @@ def plot_pairwise_barplot(df1,df2,feature,**kwarg):
     temp = df2[feature].value_counts()
     df2 = pd.DataFrame({feature: temp.index,'Count ': temp.values})
 
-    fig, (ax1, ax2) = pls.subplots(ncols=2, figsize=kwarg.get('figsize',(12,6)))
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=kwarg.get('figsize',(12,6)))
     sns.set_color_codes('pastel')
 
     if  not df1[feature].isnull().values.all():
         s = sns.barplot(ax=ax1, x = feature, y='Count ',order=df1[feature][:maxcount],data=df1[:maxcount])
-        s.set_xticklabels(s.get_xticklabels(),rotation=90)
+        s.tick_params(axis='x', labelrotation=90)
     if not df2[feature].isnull().values.all():
         s = sns.barplot(ax=ax2, x = feature, y='Count ',order=df2[feature][:maxcount],data=df2[:maxcount])
-        s.set_xticklabels(s.get_xticklabels(),rotation=90)
+        s.tick_params(axis='x', labelrotation=90)
 
-    pls.tick_params(axis='both', which='major', labelsize=10)
+    plt.tick_params(axis='both', which='major', labelsize=10)
 
-    pls.show()
+    plt.show()
 
 def plot_pairwise_stats(df1,df2,feature,target,**kwarg):
     """Plots pairwise feature statistics.
     """
     maxcount=kwarg.get('maxcount',20)
 
-    fig, axs = pls.subplots(ncols=2,nrows=2,figsize=kwarg.get('figsize',(12,12)))
+    fig, axs = plt.subplots(ncols=2,nrows=2,figsize=kwarg.get('figsize',(12,12)))
 
     if feature in df1.columns and not df1[feature].isnull().values.all():
         plot_stats(df1,feature,target,maxcount=maxcount,sortby='Count ',ax=axs[:,0],showfigure=False)
@@ -316,7 +316,7 @@ def plot_pairwise_stats(df1,df2,feature,target,**kwarg):
     if feature in df2.columns and not df2[feature].isnull().values.all():
         plot_stats(df2,feature,target,maxcount=maxcount,sortby='Count ',ax=axs[:,1])
 
-    pls.show()
+    plt.show()
 
 def pairwise_target_stat_per_day(df1,df2,target, **kwarg ):
     """Plots n top feature values counts per day
@@ -351,8 +351,8 @@ def pairwise_target_stat_per_day(df1,df2,target, **kwarg ):
                                                                  linewidth=linewidth)
         ax.lines[0].set_linestyle(':')
         ax.lines[1].set_linestyle('--')
-        pls.legend([f'First frame {target} {method_name}',f'Second frame {target} mean'])
-        pls.show()
+        plt.legend([f'First frame {target} {method_name}',f'Second frame {target} mean'])
+        plt.show()
 
 
 def display_side_by_side(dfs:list, captions:list)->None:

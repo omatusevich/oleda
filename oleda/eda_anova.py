@@ -11,7 +11,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import matplotlib.pyplot as pls
+import matplotlib.pyplot as plt
 
 import seaborn as sns
 from IPython.display import display, HTML
@@ -19,7 +19,8 @@ import statsmodels.api as sm
 import statsmodels.stats.multicomp as mc
 from statsmodels.formula.api import ols
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 #=====================#=====================#=====================#=====================
 # target variance among categorical feature values
